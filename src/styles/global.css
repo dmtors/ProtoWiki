@@ -160,7 +160,8 @@ ol {
   padding-inline-start: var(--spacing-200, 32px);
 }
 
-li {
+/* Prose list spacing only — Codex menus (MenuButton, Select, Lookup, …) own their item spacing. */
+li:not(.cdx-menu-item) {
   margin-block: var(--spacing-25, 4px);
 }
 

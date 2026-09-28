@@ -21,7 +21,8 @@ function attributionSignalsUrl(host: string, title: string, expand: readonly str
   const encodedTitle = encodeURIComponent(title.replace(/ /g, '_'))
   const base = `https://${host}/w/rest.php/attribution/v0-beta/pages/${encodedTitle}/signals`
   if (!expand.length) return base
-  const params = new URLSearchParams({ expand: expand.join(',') })
+  // Multi-value REST params are pipe-separated; a comma-joined value is rejected with HTTP 400.
+  const params = new URLSearchParams({ expand: expand.join('|') })
   return `${base}?${params.toString()}`
 }
 
