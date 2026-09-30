@@ -12,7 +12,15 @@ import {
 } from '@wikimedia/codex'
 import { TableRowIdentifier } from '@wikimedia/codex'
 import type { TableColumn, TableSort } from '@wikimedia/codex'
-import { cdxIconCollapse, cdxIconExpand, cdxIconLink } from '@wikimedia/codex-icons'
+import {
+  cdxIconChart,
+  cdxIconCollapse,
+  cdxIconExpand,
+  cdxIconFolderPlaceholder,
+  cdxIconLanguage,
+  cdxIconLink,
+  cdxIconReferences,
+} from '@wikimedia/codex-icons'
 
 import PlainWrapper from '@/components/PlainWrapper.vue'
 
@@ -30,6 +38,7 @@ import {
 } from './citations'
 import { loadCachedCheck, saveCachedCheck } from './resultsCache'
 import ShareSummaryDialog from './ShareSummaryDialog.vue'
+import SummaryBadge from './SummaryBadge.vue'
 import type { CitationSummary } from './summary'
 
 definePage({
@@ -212,10 +221,16 @@ function articleHref(row: Citation): string {
   return row.anchor ? `${base}#${row.anchor}` : base
 }
 
+/**
+ * Fixed widths (any `width` switches CdxTable to `table-layout: fixed`), so
+ * expanding a group never reflows the columns. Language fits "Vietnamese + 1 more"
+ * on one line; page views fits its header (with sort icon) on one line; Article
+ * takes the rest.
+ */
 const columns: TableColumn[] = [
   { id: 'article', label: 'Article', allowSort: true },
-  { id: 'language', label: 'Language', allowSort: true },
-  { id: 'views', label: 'Annual page views', textAlign: 'number', allowSort: true },
+  { id: 'language', label: 'Language', allowSort: true, width: '11rem' },
+  { id: 'views', label: 'Annual page views', textAlign: 'number', allowSort: true, width: '12.5rem' },
 ]
 
 /** Most-visited first by default. CdxTable only emits the sort state; the data is sorted here. */
@@ -261,36 +276,59 @@ function toggleGroup(key: string) {
   expanded.value = next
 }
 
+/**
+ * Page views for a whole group: the sum across its languages. `undefined`
+ * while any are still loading (so the total never shows half-counted); `null`
+ * when none are available.
+ */
+function groupViews(group: TopicGroup): number | null | undefined {
+  if (group.rows.some((row) => row.views === undefined)) return undefined
+  const known = group.rows.filter((row) => typeof row.views === 'number')
+  return known.length ? known.reduce((sum, row) => sum + (row.views as number), 0) : null
+}
+
 type TableRow = {
   [TableRowIdentifier]: string
   article: string
   language: string
+  /** Shown value: the group total on a collapsed group's row, else this language's own. */
   views: number | null | undefined
+  /** Sort key: always the group total, so expanding a group never moves it. */
+  groupViews: number | null | undefined
   row: Citation
   groupKey: string
   /** `main` = the group's lead language; `child` = another language, shown when expanded. */
   kind: 'main' | 'child'
-  /** Other languages in the group (main rows only). */
+  /** Other languages in the group (main rows only) — drives the toggle. */
   others: number
+  /** Main row standing in for its whole group (it has other languages, and they're hidden). */
+  representsGroup: boolean
 }
 
-const toTableRow = (row: Citation, group: TopicGroup, kind: TableRow['kind']): TableRow => ({
-  // Stable identity, so rows keep their DOM (and hover/focus) as the order changes.
-  [TableRowIdentifier]: row.key,
-  article: row.title,
-  language: row.language,
-  views: row.views,
-  row,
-  groupKey: group.key,
-  kind,
-  others: kind === 'main' ? group.rows.length - 1 : 0,
-})
+const toTableRow = (row: Citation, group: TopicGroup, kind: TableRow['kind']): TableRow => {
+  const others = kind === 'main' ? group.rows.length - 1 : 0
+  const representsGroup = others > 0 && !expanded.value.has(group.key)
+  const total = groupViews(group)
+  return {
+    // Stable identity, so rows keep their DOM (and hover/focus) as the order changes.
+    [TableRowIdentifier]: row.key,
+    article: row.title,
+    language: row.language,
+    views: representsGroup ? total : row.views,
+    groupViews: total,
+    row,
+    groupKey: group.key,
+    kind,
+    others,
+    representsGroup,
+  }
+}
 
 /** Comparable value per column; `null` (loading / unavailable) always sorts last. */
 function sortValue(item: TableRow, column: string): string | number | null {
   if (column === 'article') return item.article
   if (column === 'language') return item.language
-  if (column === 'views') return item.views ?? null
+  if (column === 'views') return item.groupViews ?? null
   return null
 }
 
@@ -327,24 +365,27 @@ const totalVisits = computed(() =>
   rows.value.reduce((sum, row) => sum + (typeof row.views === 'number' ? row.views : 0), 0),
 )
 
-const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? '' : 's'}`
+const plural = (label: string | number, count: number, noun: string) => `${label} ${noun}${count === 1 ? '' : 's'}`
 
 /**
- * Topics = Wikidata items (groups); languages = distinct wikis.
- * - many topics, many languages: "42 citations on Wikipedia articles about 20 topics across 30 languages"
- * - many topics, one language:   "42 citations on Wikipedia articles about 20 topics"
- * - one topic, many languages:   "42 citations on Wikipedia across 30 languages"
- * - one article:                 "1 citation on Wikipedia"
+ * Stats beside the "Cited on Wikipedia" badge, above the table. Topics =
+ * Wikidata items (groups), shown only when the citations span more than one;
+ * languages = distinct wikis; page views once any have loaded.
  */
-const caption = computed(() => {
+const summaryStats = computed(() => {
+  const citations = rows.value.length
   const topics = groups.value.length
   const languages = wikiCount.value
-  let text = `${plural(rows.value.length, 'citation')} on Wikipedia`
-  if (topics > 1) text += ` articles about ${plural(topics, 'topic')}`
-  if (languages > 1) text += ` across ${plural(languages, 'language')}`
-
-  const hasVisits = rows.value.some((row) => typeof row.views === 'number')
-  return hasVisits ? `${text} with ${roughNumber.format(totalVisits.value)} total annual page views` : text
+  const stats = [
+    { key: 'citations', icon: cdxIconReferences, label: plural(citations.toLocaleString('en'), citations, 'citation') },
+  ]
+  if (topics > 1) stats.push({ key: 'topics', icon: cdxIconFolderPlaceholder, label: plural(topics, topics, 'topic') })
+  stats.push({ key: 'languages', icon: cdxIconLanguage, label: plural(languages, languages, 'language') })
+  if (rows.value.some((row) => typeof row.views === 'number')) {
+    const views = totalVisits.value
+    stats.push({ key: 'views', icon: cdxIconChart, label: plural(roughNumber.format(views), views, 'annual page view') })
+  }
+  return stats
 })
 
 const busy = computed(() => phase.value === 'searching' || phase.value === 'enriching')
@@ -354,7 +395,7 @@ const shareOpen = ref(false)
 /** Source URL of the results on screen — set when a check starts. */
 const checkedSource = ref('')
 
-/** What the Share summary badge reports — the same numbers as the table caption. */
+/** What the Share summary badge reports — the same numbers as the summary row. */
 const summary = computed<CitationSummary | null>(() => {
   if (!rows.value.length) return null
   const hasVisits = rows.value.some((row) => typeof row.views === 'number')
@@ -412,11 +453,21 @@ const statusText = computed(() => {
     </CdxMessage>
 
     <template v-if="rows.length">
+      <div v-if="summary" class="cited__summary">
+        <SummaryBadge :summary="summary" size="compact" :show-count="false" />
+        <ul class="cited__summary-stats">
+          <li v-for="stat in summaryStats" :key="stat.key" class="cited__summary-stat">
+            <CdxIcon :icon="stat.icon" size="small" />
+            {{ stat.label }}
+          </li>
+        </ul>
+      </div>
+
       <CdxTable
         :sort="sort"
         @update:sort="onSort"
         class="cited__table"
-        :caption="caption"
+        caption="Summary"
         :columns="columns"
         :data="tableData"
       >
@@ -453,12 +504,13 @@ const statusText = computed(() => {
 
         <template #item-language="{ row }">
           {{ row.language }}
-          <span v-if="row.others" class="cited__pending">+ {{ row.others }} more</span>
+          <!-- Collapsed: the row stands for the whole group. Expanded: just this language. -->
+          <span v-if="row.representsGroup" class="cited__pending">+ {{ row.others }} more</span>
         </template>
 
         <template #item-views="{ row }">
           <span v-if="row.views === undefined" class="cited__pending">Loading…</span>
-          <span v-else-if="row.row.viewsFailed" class="cited__pending">Couldn't load</span>
+          <span v-else-if="!row.representsGroup && row.row.viewsFailed" class="cited__pending">Couldn't load</span>
           <span v-else-if="row.views === null" class="cited__pending">—</span>
           <template v-else>{{ row.views.toLocaleString('en') }}</template>
         </template>
@@ -504,6 +556,58 @@ const statusText = computed(() => {
   margin-top: var(--spacing-150);
 }
 
+/* Badge, then stats styled like the shareable badge's signals; wraps on narrow screens. */
+.cited__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-50) var(--spacing-100);
+  margin-top: var(--spacing-150);
+}
+
+/*
+ * Smaller pill than the shareable Compact badge: Figure caption text (all four
+ * tokens) to match the stats beside it, and the "W" at the stats' small icon size.
+ */
+.cited__summary :deep(.summary-badge__label) {
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-small);
+}
+
+.cited__summary :deep(.summary-badge--compact .summary-badge__mark) {
+  /* CdxIcon's default (medium) size also sets an 18px minimum. */
+  min-width: 0;
+  min-height: 0;
+  width: var(--font-size-medium);
+  height: var(--font-size-medium);
+}
+
+.cited__summary-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-50) var(--spacing-100);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Figure caption text style — all four tokens. */
+.cited__summary-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-25);
+  margin: 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-small);
+  color: var(--color-base);
+  white-space: nowrap;
+}
+
 /* Keep "Share summary" top right: the caption wraps beside it instead of pushing it below. */
 .cited__table :deep(.cdx-table__header) {
   flex-wrap: nowrap;
@@ -533,7 +637,7 @@ const statusText = computed(() => {
 
 /*
  * Every article title starts in the same column: main rows reserve the toggle's
- * width (button or not), and other-language rows indent one step past it.
+ * width (button or not), and other-language rows start at the same point.
  */
 .cited__article {
   --cited-toggle-size: var(--min-size-interactive-pointer--small, 24px);
@@ -552,8 +656,9 @@ const statusText = computed(() => {
   padding-inline-start: 0;
 }
 
+/* Other languages line up with their group's lead title, not indented past it. */
 .cited__article--child {
-  padding-inline-start: calc(var(--cited-toggle-size) + var(--spacing-25) + var(--spacing-100));
+  padding-inline-start: calc(var(--cited-toggle-size) + var(--spacing-25));
 }
 
 .cited__toggle {

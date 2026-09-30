@@ -18,14 +18,6 @@ export interface CitationSummary {
   visits: number | null
 }
 
-/**
- * Wikipedia puzzle globe. Codex ships only the "W" mark (`cdxIconLogoWikipedia`),
- * so this is the Commons original, as a standard 250px thumbnail. upload.wikimedia.org
- * sends `Access-Control-Allow-Origin: *`, so it can be drawn into the PNG export.
- */
-export const GLOBE_SRC =
-  'https://upload.wikimedia.org/wikipedia/commons/thumb/8/80/Wikipedia-logo-v2.svg/250px-Wikipedia-logo-v2.svg.png'
-
 /** Rough, rounded totals: 12,609 → "13K", 1,234,567 → "1.2M". */
 const roughNumber = new Intl.NumberFormat('en', { notation: 'compact', maximumSignificantDigits: 2 })
 

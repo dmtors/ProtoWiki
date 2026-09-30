@@ -1,23 +1,30 @@
 <script setup lang="ts">
 /**
  * "Cited on Wikipedia" badge. Compact = pill with an optional "15x"; detailed =
- * card with globe, title, and wrapping stats (one row when wide, stacked when narrow).
+ * card with the Wikipedia "W" mark, title, and wrapping stats (one row when wide,
+ * stacked when narrow).
  *
  * `data-paint` marks what `renderSummaryImage` draws, so the PNG matches this layout.
  */
 import { computed } from 'vue'
 import { CdxIcon } from '@wikimedia/codex'
+import { cdxIconLogoWikipedia } from '@wikimedia/codex-icons'
 
-import { compactCount, GLOBE_SRC, summaryStats, type CitationSummary, type SummarySize } from './summary'
+import { compactCount, summaryStats, type CitationSummary, type SummarySize } from './summary'
 
-const props = defineProps<{
-  summary: CitationSummary
-  size: SummarySize
-  /** Makes the whole badge a link (embeds link back to the full check). */
-  href?: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    summary: CitationSummary
+    size: SummarySize
+    /** Makes the whole badge a link (embeds link back to the full check). */
+    href?: string
+    /** Compact only: append the "15x" citation count. Off = the plain "Cited on Wikipedia" pill. */
+    showCount?: boolean
+  }>(),
+  { href: undefined, showCount: true },
+)
 
-const count = computed(() => compactCount(props.summary))
+const count = computed(() => (props.showCount ? compactCount(props.summary) : ''))
 const stats = computed(() => summaryStats(props.summary))
 </script>
 
@@ -31,8 +38,7 @@ const stats = computed(() => summaryStats(props.summary))
     :rel="href ? 'noopener' : undefined"
     data-paint="box"
   >
-    <!-- crossorigin keeps the canvas untainted, so the PNG export can read it back. -->
-    <img class="summary-badge__globe" :src="GLOBE_SRC" alt="" crossorigin="anonymous" data-paint="image" />
+    <CdxIcon class="summary-badge__mark" :icon="cdxIconLogoWikipedia" data-paint="icon" />
 
     <template v-if="size === 'compact'">
       <span class="summary-badge__label" data-paint="text">Cited on Wikipedia</span>
@@ -90,15 +96,15 @@ a.summary-badge:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: var(--spacing-35, 6px);
-  padding: var(--spacing-25) var(--spacing-75) var(--spacing-25) var(--spacing-25);
+  padding: var(--spacing-25) var(--spacing-75) var(--spacing-25) var(--spacing-50);
   border-radius: var(--border-radius-pill);
   background-color: var(--background-color-neutral);
   white-space: nowrap;
 }
 
-.summary-badge--compact .summary-badge__globe {
-  width: 24px;
-  height: 24px;
+.summary-badge--compact .summary-badge__mark {
+  width: 20px;
+  height: 20px;
 }
 
 /* Detailed: card. */
@@ -119,25 +125,25 @@ a.summary-badge:focus-visible {
   background-color: var(--background-color-base);
 }
 
-.summary-badge--detailed .summary-badge__globe {
+/* The "W" scales with its CdxIcon box — the SVG fills 100% of it. */
+.summary-badge--detailed .summary-badge__mark {
   flex-shrink: 0;
-  width: 64px;
-  height: 64px;
+  width: 48px;
+  height: 48px;
 }
 
-.summary-badge__globe {
-  display: block;
-  object-fit: contain;
+.summary-badge__mark {
+  color: var(--color-base);
 }
 
 /*
- * Narrow cards: a smaller globe leaves the stats room to fit on their own lines.
+ * Narrow cards: a smaller mark leaves the stats room to fit on their own lines.
  * Measured against the card's content box (inside its padding and border).
  */
 @container (max-width: 220px) {
-  .summary-badge--detailed .summary-badge__globe {
-    width: 40px;
-    height: 40px;
+  .summary-badge--detailed .summary-badge__mark {
+    width: 32px;
+    height: 32px;
   }
 }
 
