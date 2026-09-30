@@ -304,3 +304,12 @@ hr {
   padding-bottom: var(--spacing-50, 8px);
   border-bottom: 1px solid var(--border-color-subtle, #c8ccd1);
 }
+
+/*
+ * Codex sortable table headers render their label in a <button> that sets no
+ * colour, so it falls back to the browser's black button text — unreadable in
+ * dark mode. Match the header cell's own Codex token (`.cdx-table__table th`).
+ */
+.cdx-table__table__sort-button {
+  color: var(--color-emphasized);
+}

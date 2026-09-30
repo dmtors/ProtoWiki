@@ -16,7 +16,6 @@ import {
   cdxIconChart,
   cdxIconCollapse,
   cdxIconExpand,
-  cdxIconFolderPlaceholder,
   cdxIconLanguage,
   cdxIconLink,
   cdxIconReferences,
@@ -37,6 +36,7 @@ import {
   type Citation,
 } from './citations'
 import { loadCachedCheck, saveCachedCheck } from './resultsCache'
+import LanguageFilter, { type LanguageOption } from './LanguageFilter.vue'
 import ShareSummaryDialog from './ShareSummaryDialog.vue'
 import SummaryBadge from './SummaryBadge.vue'
 import type { CitationSummary } from './summary'
@@ -99,7 +99,7 @@ async function assignWikidataIds(wikiRows: Citation[], signal: AbortSignal) {
   }
 }
 
-/** Load annual page views for one row (a reactive proxy). The anchor loads on hover. */
+/** Load annual views for one row (a reactive proxy). The anchor loads on hover. */
 async function enrichRow(row: Citation, signal: AbortSignal) {
   await fetchAnnualViews(row, signal)
     .then((views) => (row.views = views))
@@ -147,6 +147,7 @@ async function check(options: { refresh?: boolean } = {}) {
   errorMessage.value = null
   cachedAt.value = null
   expanded.value = new Set()
+  languageFilter.value = []
 
   const cacheKey = `${source.domainOnly ? 'domain:' : ''}${source.normalized}`
   const cached = options.refresh ? null : loadCachedCheck(cacheKey)
@@ -224,13 +225,13 @@ function articleHref(row: Citation): string {
 /**
  * Fixed widths (any `width` switches CdxTable to `table-layout: fixed`), so
  * expanding a group never reflows the columns. Language fits "Vietnamese + 1 more"
- * on one line; page views fits its header (with sort icon) on one line; Article
+ * on one line; views fits its header (with sort icon) on one line; Article
  * takes the rest.
  */
 const columns: TableColumn[] = [
   { id: 'article', label: 'Article', allowSort: true },
   { id: 'language', label: 'Language', allowSort: true, width: '11rem' },
-  { id: 'views', label: 'Annual page views', textAlign: 'number', allowSort: true, width: '12.5rem' },
+  { id: 'views', label: 'Annual views', textAlign: 'number', allowSort: true, width: '9.5rem' },
 ]
 
 /** Most-visited first by default. CdxTable only emits the sort state; the data is sorted here. */
@@ -255,9 +256,37 @@ interface TopicGroup {
 const byVisitsDesc = (a: Citation, b: Citation) =>
   (typeof b.views === 'number' ? b.views : -1) - (typeof a.views === 'number' ? a.views : -1)
 
+/** Language codes to include; empty = all (the default). Filters the table only. */
+const languageFilter = ref<string[]>([])
+
+/** Languages present in the results, most-cited first — the filter's options. */
+const languageOptions = computed<LanguageOption[]>(() => {
+  const byLang = new Map<string, LanguageOption>()
+  for (const row of rows.value) {
+    const option = byLang.get(row.lang)
+    if (option) option.citations++
+    else byLang.set(row.lang, { value: row.lang, label: row.language, citations: 1 })
+  }
+  return [...byLang.values()].sort((a, b) => b.citations - a.citations || a.label.localeCompare(b.label))
+})
+
+/** Rows the table shows — filtered before grouping, so groups hold only included languages. */
+const visibleRows = computed(() => {
+  if (!languageFilter.value.length) return rows.value
+  const include = new Set(languageFilter.value)
+  return rows.value.filter((row) => include.has(row.lang))
+})
+
+const filterNote = computed(() => {
+  if (!languageFilter.value.length) return null
+  const shown = visibleRows.value.length
+  const languages = languageFilter.value.length
+  return `Showing ${shown} of ${rows.value.length} citations, in ${languages} of ${languageOptions.value.length} languages.`
+})
+
 const groups = computed<TopicGroup[]>(() => {
   const byKey = new Map<string, Citation[]>()
-  for (const row of rows.value) {
+  for (const row of visibleRows.value) {
     const key = row.qid ?? row.key
     const members = byKey.get(key)
     if (members) members.push(row)
@@ -277,7 +306,7 @@ function toggleGroup(key: string) {
 }
 
 /**
- * Page views for a whole group: the sum across its languages. `undefined`
+ * Views for a whole group: the sum across its languages. `undefined`
  * while any are still loading (so the total never shows half-counted); `null`
  * when none are available.
  */
@@ -360,7 +389,7 @@ const wikiCount = computed(() => new Set(rows.value.map((row) => row.lang)).size
 /** Rough, rounded totals: 12,609 → "13K", 291,344 → "290K", 1,234,567 → "1.2M". */
 const roughNumber = new Intl.NumberFormat('en', { notation: 'compact', maximumSignificantDigits: 2 })
 
-/** Sum of the page views loaded so far — grows while rows are still loading. */
+/** Sum of the views loaded so far — grows while rows are still loading. */
 const totalVisits = computed(() =>
   rows.value.reduce((sum, row) => sum + (typeof row.views === 'number' ? row.views : 0), 0),
 )
@@ -368,22 +397,19 @@ const totalVisits = computed(() =>
 const plural = (label: string | number, count: number, noun: string) => `${label} ${noun}${count === 1 ? '' : 's'}`
 
 /**
- * Stats beside the "Cited on Wikipedia" badge, above the table. Topics =
- * Wikidata items (groups), shown only when the citations span more than one;
- * languages = distinct wikis; page views once any have loaded.
+ * Stats beside the "Cited on Wikipedia" badge, above the table. Languages =
+ * distinct wikis; views once any have loaded.
  */
 const summaryStats = computed(() => {
   const citations = rows.value.length
-  const topics = groups.value.length
   const languages = wikiCount.value
   const stats = [
     { key: 'citations', icon: cdxIconReferences, label: plural(citations.toLocaleString('en'), citations, 'citation') },
   ]
-  if (topics > 1) stats.push({ key: 'topics', icon: cdxIconFolderPlaceholder, label: plural(topics, topics, 'topic') })
   stats.push({ key: 'languages', icon: cdxIconLanguage, label: plural(languages, languages, 'language') })
   if (rows.value.some((row) => typeof row.views === 'number')) {
     const views = totalVisits.value
-    stats.push({ key: 'views', icon: cdxIconChart, label: plural(roughNumber.format(views), views, 'annual page view') })
+    stats.push({ key: 'views', icon: cdxIconChart, label: plural(roughNumber.format(views), views, 'annual view') })
   }
   return stats
 })
@@ -463,18 +489,28 @@ const statusText = computed(() => {
         </ul>
       </div>
 
+      <p v-if="filterNote" class="cited__filter-note">
+        <small>{{ filterNote }}</small>
+        <CdxButton weight="quiet" action="progressive" size="small" @click="languageFilter = []">
+          Show all languages
+        </CdxButton>
+      </p>
+
       <CdxTable
         :sort="sort"
         @update:sort="onSort"
         class="cited__table"
-        caption="Summary"
+        caption="Citations"
         :columns="columns"
         :data="tableData"
       >
         <template #header>
-          <CdxButton action="progressive" weight="primary" :disabled="busy" @click="shareOpen = true">
-            Share summary
-          </CdxButton>
+          <div class="cited__table-actions">
+            <LanguageFilter v-model="languageFilter" :options="languageOptions" />
+            <CdxButton action="progressive" weight="primary" :disabled="busy" @click="shareOpen = true">
+              Share summary
+            </CdxButton>
+          </div>
         </template>
 
         <template #item-article="{ row }">
@@ -668,6 +704,26 @@ const statusText = computed(() => {
 .cited__note {
   margin-top: var(--spacing-50);
   color: var(--color-subtle);
+}
+
+.cited__table-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-50);
+}
+
+.cited__filter-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-50);
+  margin: var(--spacing-100) 0 0;
+  color: var(--color-subtle);
+}
+
+/* The note sits right above the table — tighten the table's usual top margin. */
+.cited__filter-note + .cited__table {
+  margin-top: var(--spacing-50);
 }
 
 .cited__cached {

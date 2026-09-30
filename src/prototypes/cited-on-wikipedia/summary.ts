@@ -14,7 +14,7 @@ export interface CitationSummary {
   source: string
   citations: number
   languages: number
-  /** Total annual page views, or `null` when unknown. */
+  /** Total annual views, or `null` when unknown. */
   visits: number | null
 }
 
@@ -30,7 +30,7 @@ export function compactCount(summary: CitationSummary): string {
 
 /**
  * Detailed badge stats. Citations always; languages only when more than one;
- * page views once known — so the badge only states what adds information.
+ * views once known — so the badge only states what adds information.
  */
 export function summaryStats(summary: CitationSummary): { key: string; icon: Icon; label: string }[] {
   const stats = [
@@ -44,7 +44,7 @@ export function summaryStats(summary: CitationSummary): { key: string; icon: Ico
     stats.push({ key: 'languages', icon: cdxIconLanguage, label: plural(summary.languages, summary.languages, 'language') })
   }
   if (typeof summary.visits === 'number') {
-    stats.push({ key: 'visits', icon: cdxIconChart, label: plural(roughNumber.format(summary.visits), summary.visits, 'page view') })
+    stats.push({ key: 'visits', icon: cdxIconChart, label: plural(roughNumber.format(summary.visits), summary.visits, 'view') })
   }
   return stats
 }
