@@ -3,7 +3,7 @@
  *
  * - Discovery: Action API `list=exturlusage` (prefix match on the external-links
  *   table) on every open Wikipedia from the Meta sitematrix, largest first.
- * - Annual visits: Pageviews REST API, user agent, last 12 full months.
+ * - Annual page views: Pageviews REST API, user agent, last 12 full months.
  * - Cited by (`fetchCitedBy` — not shown in the page for now): no API records
  *   who added a link, so we bisect the page history for the first revision
  *   whose wikitext contains the URL (WikiBlame-style).

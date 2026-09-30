@@ -90,7 +90,7 @@ async function assignWikidataIds(wikiRows: Citation[], signal: AbortSignal) {
   }
 }
 
-/** Load annual visits for one row (a reactive proxy). The anchor loads on hover. */
+/** Load annual page views for one row (a reactive proxy). The anchor loads on hover. */
 async function enrichRow(row: Citation, signal: AbortSignal) {
   await fetchAnnualViews(row, signal)
     .then((views) => (row.views = views))
@@ -215,7 +215,7 @@ function articleHref(row: Citation): string {
 const columns: TableColumn[] = [
   { id: 'article', label: 'Article', allowSort: true },
   { id: 'language', label: 'Language', allowSort: true },
-  { id: 'views', label: 'Annual visits', textAlign: 'number', allowSort: true },
+  { id: 'views', label: 'Annual page views', textAlign: 'number', allowSort: true },
 ]
 
 /** Most-visited first by default. CdxTable only emits the sort state; the data is sorted here. */
@@ -322,7 +322,7 @@ const wikiCount = computed(() => new Set(rows.value.map((row) => row.lang)).size
 /** Rough, rounded totals: 12,609 → "13K", 291,344 → "290K", 1,234,567 → "1.2M". */
 const roughNumber = new Intl.NumberFormat('en', { notation: 'compact', maximumSignificantDigits: 2 })
 
-/** Sum of the visits loaded so far — grows while rows are still loading. */
+/** Sum of the page views loaded so far — grows while rows are still loading. */
 const totalVisits = computed(() =>
   rows.value.reduce((sum, row) => sum + (typeof row.views === 'number' ? row.views : 0), 0),
 )
@@ -344,7 +344,7 @@ const caption = computed(() => {
   if (languages > 1) text += ` across ${plural(languages, 'language')}`
 
   const hasVisits = rows.value.some((row) => typeof row.views === 'number')
-  return hasVisits ? `${text} with ${roughNumber.format(totalVisits.value)} total annual visits` : text
+  return hasVisits ? `${text} with ${roughNumber.format(totalVisits.value)} total annual page views` : text
 })
 
 const busy = computed(() => phase.value === 'searching' || phase.value === 'enriching')
