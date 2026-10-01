@@ -30,7 +30,12 @@ const checkerHref = computed(() => {
 
 <template>
   <main class="summary-embed-frame">
-    <SummaryBadge :summary="parsed.summary" :size="parsed.size" :href="checkerHref" />
+    <SummaryBadge
+      :summary="parsed.summary"
+      :size="parsed.size"
+      :href="checkerHref"
+      :show-source="parsed.showSource"
+    />
   </main>
 </template>
 

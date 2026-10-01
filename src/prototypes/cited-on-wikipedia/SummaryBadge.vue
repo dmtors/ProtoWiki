@@ -20,22 +20,36 @@ const props = withDefaults(
     href?: string
     /** Compact only: append the "15x" citation count. Off = the plain "Cited on Wikipedia" pill. */
     showCount?: boolean
+    /** Detailed only: list the source URL, as a link, under the title. */
+    showSource?: boolean
   }>(),
-  { href: undefined, showCount: true },
+  { href: undefined, showCount: true, showSource: false },
 )
 
 const count = computed(() => (props.showCount ? compactCount(props.summary) : ''))
 const stats = computed(() => summaryStats(props.summary))
+
+const sourceShown = computed(() => props.size === 'detailed' && props.showSource && !!props.summary.source)
+
+/** The URL split after each "/" (slashes kept), for wrap points. */
+const sourceParts = computed(() => props.summary.source.split(/(?<=\/)/))
+
+/**
+ * Links can't nest: with the source link shown, the badge itself isn't a link —
+ * the title links to `href` instead, beside the source link.
+ */
+const wholeBadgeLink = computed(() => !!props.href && !sourceShown.value)
+const titleLink = computed(() => !!props.href && sourceShown.value)
 </script>
 
 <template>
   <component
-    :is="href ? 'a' : 'div'"
+    :is="wholeBadgeLink ? 'a' : 'div'"
     class="summary-badge"
     :class="`summary-badge--${size}`"
-    :href="href"
-    :target="href ? '_blank' : undefined"
-    :rel="href ? 'noopener' : undefined"
+    :href="wholeBadgeLink ? href : undefined"
+    :target="wholeBadgeLink ? '_blank' : undefined"
+    :rel="wholeBadgeLink ? 'noopener' : undefined"
     data-paint="box"
   >
     <CdxIcon class="summary-badge__mark" :icon="cdxIconLogoWikipedia" data-paint="icon" />
@@ -46,7 +60,31 @@ const stats = computed(() => summaryStats(props.summary))
     </template>
 
     <div v-else class="summary-badge__body">
-      <span class="summary-badge__title" data-paint="text">Cited on Wikipedia</span>
+      <!-- Title + source sit flush (no gap); the stats follow at the body's usual gap. -->
+      <div class="summary-badge__heading">
+        <a
+          v-if="titleLink"
+          class="summary-badge__title summary-badge__title-link"
+          :href="href"
+          target="_blank"
+          rel="noopener"
+          data-paint="text"
+        >
+          Cited on Wikipedia
+        </a>
+        <span v-else class="summary-badge__title" data-paint="text">Cited on Wikipedia</span>
+        <a
+          v-if="sourceShown"
+          class="summary-badge__source"
+          :href="summary.source"
+          target="_blank"
+          rel="noopener"
+          data-paint="text"
+        >
+          <!-- <wbr> after each "/" so long URLs wrap at path boundaries. -->
+          <template v-for="(part, i) in sourceParts" :key="i">{{ part }}<wbr /></template>
+        </a>
+      </div>
       <ul class="summary-badge__stats">
         <li v-for="stat in stats" :key="stat.key" class="summary-badge__stat">
           <CdxIcon :icon="stat.icon" size="small" data-paint="icon" />
@@ -66,7 +104,35 @@ const stats = computed(() => summaryStats(props.summary))
 }
 
 a.summary-badge:hover .summary-badge__title,
-a.summary-badge:hover .summary-badge__label:first-of-type {
+a.summary-badge:hover .summary-badge__label:first-of-type,
+.summary-badge__title-link:hover {
+  text-decoration: underline;
+}
+
+.summary-badge__title-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.summary-badge__heading {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* x-small font size and line height, as a link; long URLs break anywhere rather than overflow. */
+.summary-badge__source {
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-x-small);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-x-small);
+  color: var(--color-progressive);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.summary-badge__source:hover {
+  color: var(--color-progressive--hover);
   text-decoration: underline;
 }
 

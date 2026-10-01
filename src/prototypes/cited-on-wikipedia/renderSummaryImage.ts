@@ -68,18 +68,29 @@ function paintText(ctx: CanvasRenderingContext2D, el: Element) {
 
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
   const range = document.createRange()
+  const draw = (text: string, rect: DOMRect) => {
+    const metrics = ctx.measureText(text)
+    const ascent = metrics.fontBoundingBoxAscent
+    const descent = metrics.fontBoundingBoxDescent
+    // Centre the font's content box in the line box, as layout does.
+    ctx.fillText(text, rect.left, rect.top + (rect.height - (ascent + descent)) / 2 + ascent)
+  }
+
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     const text = node.textContent ?? ''
     for (const match of text.matchAll(/\S+/g)) {
       range.setStart(node, match.index)
       range.setEnd(node, match.index + match[0].length)
-      const rect = range.getBoundingClientRect()
-      const metrics = ctx.measureText(match[0])
-      const ascent = metrics.fontBoundingBoxAscent
-      const descent = metrics.fontBoundingBoxDescent
-      // Centre the font's content box in the word's line box, as layout does.
-      const baseline = rect.top + (rect.height - (ascent + descent)) / 2 + ascent
-      ctx.fillText(match[0], rect.left, baseline)
+      if (range.getClientRects().length <= 1) {
+        draw(match[0], range.getBoundingClientRect())
+        continue
+      }
+      // A "word" that wraps across lines (e.g. a long URL): draw each character where it landed.
+      for (let i = 0; i < match[0].length; i++) {
+        range.setStart(node, match.index + i)
+        range.setEnd(node, match.index + i + 1)
+        draw(match[0][i], range.getBoundingClientRect())
+      }
     }
   }
 }

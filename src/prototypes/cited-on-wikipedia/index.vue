@@ -506,7 +506,7 @@ const statusText = computed(() => {
       >
         <template #header>
           <div class="cited__table-actions">
-            <LanguageFilter v-model="languageFilter" :options="languageOptions" />
+            <LanguageFilter v-model="languageFilter" :options="languageOptions" :disabled="busy" />
             <CdxButton action="progressive" weight="primary" :disabled="busy" @click="shareOpen = true">
               Share summary
             </CdxButton>

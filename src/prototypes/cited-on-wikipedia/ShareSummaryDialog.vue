@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { CdxDialog, CdxField, CdxRadio, CdxTextArea } from '@wikimedia/codex'
+import { CdxDialog, CdxField, CdxRadio, CdxTextArea, CdxToggleSwitch } from '@wikimedia/codex'
 
 import SummaryBadge from './SummaryBadge.vue'
 import { renderSummaryImage } from './renderSummaryImage'
@@ -11,12 +11,14 @@ const props = defineProps<{ summary: CitationSummary }>()
 const open = defineModel<boolean>('open', { required: true })
 
 const size = ref<SummarySize>('detailed')
+/** Detailed only: list the source URL under the title. */
+const showSource = ref(false)
 const router = useRouter()
 
 const embedSrc = computed(() => {
   const { href } = router.resolve({
     path: '/cited-on-wikipedia/embed',
-    query: summaryToQuery(props.summary, size.value),
+    query: summaryToQuery(props.summary, size.value, { showSource: showSource.value }),
   })
   return new URL(href, window.location.origin).href
 })
@@ -33,7 +35,7 @@ async function measurePreview() {
   frameSize.value = { width: Math.ceil(rect.width) + 2, height: Math.ceil(rect.height) + 2 }
 }
 
-watch([open, size, () => props.summary], () => open.value && measurePreview(), { immediate: true })
+watch([open, size, showSource, () => props.summary], () => open.value && measurePreview(), { immediate: true })
 
 const embedCode = computed(
   () =>
@@ -104,8 +106,12 @@ watch(open, () => (status.value = null))
       </CdxRadio>
     </CdxField>
 
+    <div v-if="size === 'detailed'" class="share-summary__option">
+      <CdxToggleSwitch v-model="showSource">Include source link</CdxToggleSwitch>
+    </div>
+
     <div ref="previewEl" class="share-summary__preview">
-      <SummaryBadge :summary="summary" :size="size" />
+      <SummaryBadge :summary="summary" :size="size" :show-source="showSource" />
     </div>
 
     <CdxField>
@@ -120,6 +126,11 @@ watch(open, () => (status.value = null))
 </template>
 
 <style scoped>
+/* Same 16px stacking as CdxField gives the Size fieldset above it. */
+.share-summary__option {
+  margin-top: var(--spacing-100);
+}
+
 .share-summary__preview {
   margin-top: var(--spacing-150);
 }

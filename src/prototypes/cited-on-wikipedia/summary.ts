@@ -50,7 +50,11 @@ export function summaryStats(summary: CitationSummary): { key: string; icon: Ico
 }
 
 /** Query params for the embed route — the numbers travel in the URL, so embeds load instantly. */
-export function summaryToQuery(summary: CitationSummary, size: SummarySize): Record<string, string> {
+export function summaryToQuery(
+  summary: CitationSummary,
+  size: SummarySize,
+  options: { showSource?: boolean } = {},
+): Record<string, string> {
   const query: Record<string, string> = {
     size,
     url: summary.source,
@@ -58,15 +62,22 @@ export function summaryToQuery(summary: CitationSummary, size: SummarySize): Rec
     languages: String(summary.languages),
   }
   if (typeof summary.visits === 'number') query.visits = String(summary.visits)
+  if (options.showSource && size === 'detailed') query.source = '1'
   return query
 }
 
-export function summaryFromQuery(query: Record<string, unknown>): { summary: CitationSummary; size: SummarySize } {
+export function summaryFromQuery(query: Record<string, unknown>): {
+  summary: CitationSummary
+  size: SummarySize
+  /** Detailed only: list the source URL under the title. */
+  showSource: boolean
+} {
   const int = (value: unknown) => {
     const n = Number.parseInt(String(value ?? ''), 10)
     return Number.isFinite(n) && n >= 0 ? n : null
   }
   return {
+    showSource: query.source === '1',
     size: query.size === 'compact' ? 'compact' : 'detailed',
     summary: {
       source: typeof query.url === 'string' ? query.url : '',
