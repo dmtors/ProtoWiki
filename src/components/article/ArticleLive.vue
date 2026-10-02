@@ -240,6 +240,11 @@ watch(liveHtml, async (html) => {
     :description="view?.description"
     :lead-image-url="view?.thumbnailUrl ?? undefined"
   >
+    <!-- Extra page actions beside the watch star; scoped with the resolved page title + host. -->
+    <template v-if="$slots['header-actions']" #header-actions>
+      <slot name="header-actions" :title="resolvedTitle" :host="resolvedHost" />
+    </template>
+
     <CdxProgressBar v-if="loading" inline aria-label="Loading article" />
 
     <CdxMessage v-if="error" type="error" :allow-user-dismiss="false">

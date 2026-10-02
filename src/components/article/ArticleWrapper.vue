@@ -94,7 +94,11 @@ const chromeHeaderLabel = computed(() => leadTitle.value || 'Article')
       :title="chromeHeaderLabel"
       :languages-count="props.languagesCount"
       :skin="props.skin"
-    />
+    >
+      <template v-if="$slots['header-actions']" #actions>
+        <slot name="header-actions" />
+      </template>
+    </ArticleHeader>
 
     <slot />
   </article>

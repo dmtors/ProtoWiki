@@ -38,7 +38,7 @@ When any of these roots sit inside **`ChromeWrapper`**, they **inherit** effecti
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | Chrome props | **`title?`**, **`header`**, **`languagesCount?`**, **`lang`**, **`dir`**, **`skin`**, **`theme`**, …                                            |
 | App props    | **`app?`** (lead block instead of **`ArticleHeader`**, skin pinned to **`mobile`**), **`description?`**, **`leadImageUrl?`** — **`app`** only |
-| Slots        | **default** (**main reader column** — **`ArticleRenderer`** or bespoke markup)                                                                  |
+| Slots        | **default** (**main reader column** — **`ArticleRenderer`** or bespoke markup); **`#header-actions`** → **`ArticleHeader`** **`#actions`** (web only) |
 
 In **`app`** mode the wrapper drops its own inline padding — the app chrome already pads the screen edges — and the lead image bleeds back out through that gutter.
 
@@ -149,6 +149,7 @@ Emits **`parserReady`** with the rendered article root once the body is in the D
 | Slot    | Notes                                                                                                                                                                         |
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | default | Forwarded inside **`ArticleRenderer`** when passed — replaces the **`v-html`** wrapper **`ArticleLive`** / **`ArticleSnapshot`** emit for **`page/html`** / snapshot bundles. |
+| `header-actions` | **`ArticleLive`** only. Extra page actions after the watch star (e.g. a share **`CdxMenuButton`**). Scoped: **`{ title, host }`** — resolved page title (null while a random pick loads) and wiki host. Example: **`src/prototypes/article-embed/`**. |
 
 ## In-app articles (`app`)
 
@@ -236,7 +237,7 @@ Vector-like **page** chrome above the parser output (not the site **`ChromeHeade
 | **`languagesCount?`** | Number for the interlanguage control label (default **18** → “18 languages”). Language rows in the popover are fixed mock data. |
 | **`skin?`**           | Desktop vs mobile layout.                                                                                                       |
 
-Fixed copy: desktop tagline **“From Wikipedia, the free encyclopedia”**; Article / Read tabs are visually active (not prop-driven). **`#title`** slot replaces the **`h1`** inner markup. Emits language pick / settings and tab/tool clicks.
+Fixed copy: desktop tagline **“From Wikipedia, the free encyclopedia”**; Article / Read tabs are visually active (not prop-driven). **`#title`** slot replaces the **`h1`** inner markup; **`#actions`** renders after the watch star (desktop actions row and mobile icon toolbar). Emits language pick / settings and tab/tool clicks.
 
 ## Styling notes
 

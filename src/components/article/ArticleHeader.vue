@@ -153,6 +153,8 @@ function onLanguagePick(row: ArticleLanguageLink) {
         >
           <CdxIcon :icon="cdxIconUnStar" />
         </CdxButton>
+        <!-- Extra page actions (e.g. a share menu) placed after the watch star. -->
+        <slot name="actions" />
       </nav>
     </div>
 
@@ -191,6 +193,7 @@ function onLanguagePick(row: ArticleLanguageLink) {
         >
           <CdxIcon :icon="cdxIconStar" />
         </button>
+        <slot name="actions" />
         <button
           type="button"
           class="article-header__icon-tool"
@@ -209,6 +212,7 @@ function onLanguagePick(row: ArticleLanguageLink) {
         >
           <CdxIcon :icon="cdxIconUnStar" />
         </button>
+        <slot name="actions" />
         <button
           type="button"
           class="article-header__icon-tool"
