@@ -581,12 +581,10 @@ const statusText = computed(() => {
     <div v-if="inputDoi" class="cited__match">
       <CdxToggleSwitch v-model="exactUrlOnly">
         Exact URL only
+        <!-- One description for both states, so the switch doesn't jump when toggled. -->
         <template #description>
-          <template v-if="exactUrlOnly">Only articles that link to this exact URL.</template>
-          <template v-else>
-            Also counting citations of this work by its DOI ({{ inputDoi }}), such as doi.org links and
-            citation templates.
-          </template>
+          Count only articles that link to this exact URL, not other citations of the same work by its DOI
+          ({{ inputDoi }}), such as doi.org links and citation templates.
         </template>
       </CdxToggleSwitch>
     </div>
