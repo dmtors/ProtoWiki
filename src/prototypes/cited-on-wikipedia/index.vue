@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   CdxButton,
@@ -9,6 +9,7 @@ import {
   CdxProgressBar,
   CdxSearchInput,
   CdxTable,
+  CdxToggleSwitch,
 } from '@wikimedia/codex'
 import { TableRowIdentifier } from '@wikimedia/codex'
 import type { TableColumn, TableSort } from '@wikimedia/codex'
@@ -26,6 +27,7 @@ import PlainWrapper from '@/components/PlainWrapper.vue'
 import {
   createLimiter,
   fetchAnnualViews,
+  fetchCitedBy,
   fetchReferenceAnchor,
   fetchWikidataIds,
   fetchWikipedias,
@@ -34,6 +36,7 @@ import {
   MAX_RESULTS,
   parseSourceInput,
   type Citation,
+  type CitedByInfo,
 } from './citations'
 import { loadCachedCheck, saveCachedCheck } from './resultsCache'
 import LanguageFilter, { type LanguageOption } from './LanguageFilter.vue'
@@ -58,6 +61,24 @@ const phase = ref<Phase>('idle')
 const errorMessage = ref<string | null>(null)
 const rows = ref<Citation[]>([])
 const truncated = ref(false)
+/** Citing articles found across all wikis — can exceed the rows shown (caps). */
+const totalFound = ref(0)
+
+/** Most rows shown from any one wiki, so a big wiki can't crowd out other languages. */
+const MAX_PER_WIKI = 50
+
+/** "Exact URL only": match the URL itself, not other links to the same work (DOI). */
+const exactUrlOnly = ref(false)
+/** Whether the results on screen came from a DOI match. */
+const checkedByDoi = ref(false)
+
+/** DOI in the URL being typed, if any — the toggle only matters when there is one. */
+const inputDoi = computed(() => parseSourceInput(input.value)?.doi ?? null)
+
+// Flipping the toggle re-runs the check for the URL on screen.
+watch(exactUrlOnly, () => {
+  if (rows.value.length || phase.value === 'done') void check()
+})
 const enriched = ref(0)
 const wikisTotal = ref(0)
 const wikisSearched = ref(0)
@@ -99,14 +120,22 @@ async function assignWikidataIds(wikiRows: Citation[], signal: AbortSignal) {
   }
 }
 
-/** Load annual views for one row (a reactive proxy). The anchor loads on hover. */
+/** Load annual views and the citing edit for one row (a reactive proxy). The anchor loads on hover. */
 async function enrichRow(row: Citation, signal: AbortSignal) {
-  await fetchAnnualViews(row, signal)
-    .then((views) => (row.views = views))
-    .catch(() => {
-      row.views = null
-      row.viewsFailed = !signal.aborted
-    })
+  await Promise.all([
+    fetchAnnualViews(row, signal)
+      .then((views) => (row.views = views))
+      .catch(() => {
+        row.views = null
+        row.viewsFailed = !signal.aborted
+      }),
+    fetchCitedBy(row, signal)
+      .then((citedBy) => (row.citedBy = citedBy))
+      .catch(() => {
+        row.citedBy = null
+        row.citedByFailed = !signal.aborted
+      }),
+  ])
   if (!signal.aborted) enriched.value++
 }
 
@@ -133,6 +162,9 @@ async function check(options: { refresh?: boolean } = {}) {
   }
   inputError.value = null
   checkedSource.value = input.value.trim()
+  // Match the work by its DOI unless "Exact URL only" is on.
+  source.byDoi = Boolean(source.doi) && !exactUrlOnly.value
+  checkedByDoi.value = source.byDoi
 
   abort?.abort()
   abort = new AbortController()
@@ -140,6 +172,7 @@ async function check(options: { refresh?: boolean } = {}) {
 
   rows.value = []
   truncated.value = false
+  totalFound.value = 0
   enriched.value = 0
   wikisSearched.value = 0
   wikisFailed.value = 0
@@ -149,11 +182,14 @@ async function check(options: { refresh?: boolean } = {}) {
   expanded.value = new Set()
   languageFilter.value = []
 
-  const cacheKey = `${source.domainOnly ? 'domain:' : ''}${source.normalized}`
+  const cacheKey = source.byDoi
+    ? `doi:${source.doi!.toLowerCase()}`
+    : `${source.domainOnly ? 'domain:' : ''}${source.normalized}`
   const cached = options.refresh ? null : loadCachedCheck(cacheKey)
   if (cached) {
     rows.value = cached.rows
     truncated.value = cached.truncated
+    totalFound.value = cached.totalFound ?? cached.rows.length
     wikisTotal.value = cached.wikisTotal
     wikisSearched.value = cached.wikisTotal
     enriched.value = cached.rows.length
@@ -177,9 +213,12 @@ async function check(options: { refresh?: boolean } = {}) {
       wikis,
       source,
       signal,
-      (hits) => {
-        const room = Math.max(MAX_RESULTS - rows.value.length, 0)
-        if (hits.length > room) truncated.value = true
+      (hits, total) => {
+        totalFound.value += total
+        // Cap each wiki as well as the total, so one big wiki (a DOI cited in
+        // hundreds of English articles) can't crowd out every other language.
+        const room = Math.max(Math.min(MAX_PER_WIKI, MAX_RESULTS - rows.value.length), 0)
+        if (total > room) truncated.value = true
         const added = hits.slice(0, room)
         if (!added.length) return
         rows.value.push(...added)
@@ -204,9 +243,14 @@ async function check(options: { refresh?: boolean } = {}) {
     phase.value = 'done'
 
     // Only cache complete, error-free checks — a partial result would stick for a day.
-    const clean = !wikisFailed.value && rows.value.every((r) => !r.viewsFailed)
+    const clean = !wikisFailed.value && rows.value.every((r) => !r.viewsFailed && !r.citedByFailed)
     if (clean) {
-      saveCachedCheck(cacheKey, { wikisTotal: wikisTotal.value, truncated: truncated.value, rows: rows.value })
+      saveCachedCheck(cacheKey, {
+        wikisTotal: wikisTotal.value,
+        truncated: truncated.value,
+        totalFound: totalFound.value,
+        rows: rows.value,
+      })
     }
   } catch (err) {
     if (signal.aborted) return
@@ -225,17 +269,23 @@ function articleHref(row: Citation): string {
 /**
  * Fixed widths (any `width` switches CdxTable to `table-layout: fixed`), so
  * expanding a group never reflows the columns. Language fits "Vietnamese + 1 more"
- * on one line; views fits its header (with sort icon) on one line; Article
- * takes the rest.
+ * on one line; views and cited-on fit their headers (with sort icon) and values
+ * on one line; Article takes the rest.
  */
 const columns: TableColumn[] = [
   { id: 'article', label: 'Article', allowSort: true },
   { id: 'language', label: 'Language', allowSort: true, width: '11rem' },
   { id: 'views', label: 'Annual views', textAlign: 'number', allowSort: true, width: '9.5rem' },
+  { id: 'citedOn', label: 'Cited on', allowSort: true, width: '10rem' },
 ]
 
-/** Most-visited first by default. CdxTable only emits the sort state; the data is sorted here. */
-const sort = ref<TableSort>({ views: 'desc' })
+/** "2025-05-30" — year first, so it reads in sort order. UTC, as page histories are. */
+const citedOnDate = (iso: string) => new Date(iso).toISOString().slice(0, 10)
+
+const diffHref = (host: string, revid: number) => `https://${host}/w/index.php?diff=${revid}`
+
+/** Most recently cited first by default. CdxTable only emits the sort state; the data is sorted here. */
+const sort = ref<TableSort>({ citedOn: 'desc' })
 
 /** Single-column sort: keep only the column whose order just changed. */
 function onSort(next: TableSort) {
@@ -253,7 +303,37 @@ interface TopicGroup {
   rows: Citation[]
 }
 
-const byVisitsDesc = (a: Citation, b: Citation) =>
+/**
+ * Browser language codes that differ from their Wikipedia's subdomain
+ * (the browser gives e.g. "nb-NO" for Norwegian Bokmål; its Wikipedia is no.wikipedia.org).
+ */
+const BROWSER_TO_WIKI: Record<string, string> = { nb: 'no', nn: 'nn', iw: 'he', in: 'id', ji: 'yi', fil: 'tl', 'zh-yue': 'zh-yue' }
+
+/**
+ * The reader's Wikipedias, most preferred first. A page can't see which wiki
+ * someone uses, but the browser shares its preferred languages, e.g.
+ * ["en-GB", "en"] → ["en"], ["ja", "en-US"] → ["ja", "en"].
+ */
+const readerLangs = (() => {
+  const langs: string[] = []
+  for (const tag of navigator.languages?.length ? navigator.languages : [navigator.language]) {
+    const lower = tag.toLowerCase()
+    const base = lower.split('-')[0]
+    for (const code of [BROWSER_TO_WIKI[lower], BROWSER_TO_WIKI[base], lower, base]) {
+      if (code && !langs.includes(code)) langs.push(code)
+    }
+  }
+  return langs
+})()
+
+const readerRank = (lang: string) => {
+  const i = readerLangs.indexOf(lang)
+  return i === -1 ? Infinity : i
+}
+
+/** Group order: the reader's own language(s) first, then most-viewed. */
+const byReaderThenVisits = (a: Citation, b: Citation) =>
+  readerRank(a.lang) - readerRank(b.lang) ||
   (typeof b.views === 'number' ? b.views : -1) - (typeof a.views === 'number' ? a.views : -1)
 
 /** Language codes to include; empty = all (the default). Filters the table only. */
@@ -292,7 +372,7 @@ const groups = computed<TopicGroup[]>(() => {
     if (members) members.push(row)
     else byKey.set(key, [row])
   }
-  return [...byKey].map(([key, members]) => ({ key, rows: [...members].sort(byVisitsDesc) }))
+  return [...byKey].map(([key, members]) => ({ key, rows: [...members].sort(byReaderThenVisits) }))
 })
 
 /** Topic groups currently showing their other languages. */
@@ -316,6 +396,33 @@ function groupViews(group: TopicGroup): number | null | undefined {
   return known.length ? known.reduce((sum, row) => sum + (row.views as number), 0) : null
 }
 
+/** A citing edit, with the wiki it was made on (for its diff link). */
+type CitedOn = { info: CitedByInfo; host: string }
+
+/**
+ * Most recent citation in a group — the latest time any of its languages added
+ * the source, matching the default "most recently cited" sort. `undefined`
+ * while any are loading; `null` when none are known.
+ */
+function groupCitedOn(group: TopicGroup): CitedOn | null | undefined {
+  if (group.rows.some((row) => row.citedBy === undefined)) return undefined
+  let latest: CitedOn | null = null
+  for (const row of group.rows) {
+    if (!row.citedBy) continue
+    if (!latest || Date.parse(row.citedBy.timestamp) > Date.parse(latest.info.timestamp)) {
+      latest = { info: row.citedBy, host: row.host }
+    }
+  }
+  return latest
+}
+
+function userHref(host: string, user: string): string {
+  // IP editors have no user page — link their contributions instead.
+  const isIp = /^[\d.]+$|:/.test(user)
+  const page = isIp ? `Special:Contributions/${user}` : `User:${user}`
+  return `https://${host}/wiki/${encodeURIComponent(page.replace(/ /g, '_'))}`
+}
+
 type TableRow = {
   [TableRowIdentifier]: string
   article: string
@@ -324,6 +431,10 @@ type TableRow = {
   views: number | null | undefined
   /** Sort key: always the group total, so expanding a group never moves it. */
   groupViews: number | null | undefined
+  /** Shown value: the group's latest citation when collapsed, else this language's own. */
+  citedOn: CitedOn | null | undefined
+  /** Sort key: always the group's latest, so expanding a group never moves it. */
+  groupCitedOn: CitedOn | null | undefined
   row: Citation
   groupKey: string
   /** `main` = the group's lead language; `child` = another language, shown when expanded. */
@@ -338,6 +449,8 @@ const toTableRow = (row: Citation, group: TopicGroup, kind: TableRow['kind']): T
   const others = kind === 'main' ? group.rows.length - 1 : 0
   const representsGroup = others > 0 && !expanded.value.has(group.key)
   const total = groupViews(group)
+  const latest = groupCitedOn(group)
+  const own: CitedOn | null | undefined = row.citedBy ? { info: row.citedBy, host: row.host } : row.citedBy
   return {
     // Stable identity, so rows keep their DOM (and hover/focus) as the order changes.
     [TableRowIdentifier]: row.key,
@@ -345,6 +458,8 @@ const toTableRow = (row: Citation, group: TopicGroup, kind: TableRow['kind']): T
     language: row.language,
     views: representsGroup ? total : row.views,
     groupViews: total,
+    citedOn: representsGroup ? latest : own,
+    groupCitedOn: latest,
     row,
     groupKey: group.key,
     kind,
@@ -358,6 +473,7 @@ function sortValue(item: TableRow, column: string): string | number | null {
   if (column === 'article') return item.article
   if (column === 'language') return item.language
   if (column === 'views') return item.groupViews ?? null
+  if (column === 'citedOn') return item.groupCitedOn ? Date.parse(item.groupCitedOn.info.timestamp) : null
   return null
 }
 
@@ -461,6 +577,20 @@ const statusText = computed(() => {
       />
     </CdxField>
 
+    <!-- Only meaningful when the URL carries a DOI: then other links to the same work count too. -->
+    <div v-if="inputDoi" class="cited__match">
+      <CdxToggleSwitch v-model="exactUrlOnly">
+        Exact URL only
+        <template #description>
+          <template v-if="exactUrlOnly">Only articles that link to this exact URL.</template>
+          <template v-else>
+            Also counting citations of this work by its DOI ({{ inputDoi }}), such as doi.org links and
+            citation templates.
+          </template>
+        </template>
+      </CdxToggleSwitch>
+    </div>
+
     <div v-if="busy" class="cited__status" role="status">
       <CdxProgressBar inline :aria-label="statusText" />
       <small>{{ statusText }}</small>
@@ -541,7 +671,7 @@ const statusText = computed(() => {
         <template #item-language="{ row }">
           {{ row.language }}
           <!-- Collapsed: the row stands for the whole group. Expanded: just this language. -->
-          <span v-if="row.representsGroup" class="cited__pending">+ {{ row.others }} more</span>
+          <span v-if="row.representsGroup" class="cited__pending">+{{ row.others }} more</span>
         </template>
 
         <template #item-views="{ row }">
@@ -550,10 +680,37 @@ const statusText = computed(() => {
           <span v-else-if="row.views === null" class="cited__pending">—</span>
           <template v-else>{{ row.views.toLocaleString('en') }}</template>
         </template>
+
+        <template #item-citedOn="{ row }">
+          <span v-if="row.citedOn === undefined" class="cited__pending">Loading…</span>
+          <span v-else-if="!row.representsGroup && row.row.citedByFailed" class="cited__pending">
+            Couldn't load
+          </span>
+          <span v-else-if="row.citedOn === null" class="cited__pending">Unknown</span>
+          <!-- "2025-05-30 by Alice": the date links to the edit, the name to the editor. -->
+          <span v-else class="cited__cited-on">
+            <a :href="diffHref(row.citedOn.host, row.citedOn.info.revid)" target="_blank" rel="noopener">{{
+              citedOnDate(row.citedOn.info.timestamp)
+            }}</a>
+            <span class="cited__by">
+              by
+              <a
+                class="cited__editor"
+                :href="userHref(row.citedOn.host, row.citedOn.info.user)"
+                target="_blank"
+                rel="noopener"
+                >{{ row.citedOn.info.user }}</a
+              >
+            </span>
+          </span>
+        </template>
       </CdxTable>
 
       <p v-if="truncated" class="cited__note">
-        <small>Showing the first {{ MAX_RESULTS }} articles.</small>
+        <small>
+          Showing {{ rows.length }} of {{ totalFound.toLocaleString('en') }} citing articles (at most
+          {{ MAX_PER_WIKI }} per language).
+        </small>
       </p>
 
       <p v-if="cachedAt" class="cited__note cited__cached">
@@ -579,6 +736,11 @@ const statusText = computed(() => {
 </template>
 
 <style scoped>
+/* Same 16px stacking as CdxField gives the field above it. */
+.cited__match {
+  margin-top: var(--spacing-100);
+}
+
 .cited__status {
   display: flex;
   flex-direction: column;
@@ -699,6 +861,18 @@ const statusText = computed(() => {
 
 .cited__toggle {
   flex-shrink: 0;
+}
+
+/* Date on the first line, "by name" on the second — the same shape in every row. */
+.cited__cited-on {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Names stay whole when they fit; only names longer than the column (e.g. IPv6) break. */
+.cited__editor {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 .cited__note {

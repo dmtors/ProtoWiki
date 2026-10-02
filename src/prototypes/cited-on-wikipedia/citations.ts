@@ -4,9 +4,9 @@
  * - Discovery: Action API `list=exturlusage` (prefix match on the external-links
  *   table) on every open Wikipedia from the Meta sitematrix, largest first.
  * - Annual views: Pageviews REST API, user agent, last 12 full months.
- * - Cited by (`fetchCitedBy` — not shown in the page for now): no API records
- *   who added a link, so we bisect the page history for the first revision
- *   whose wikitext contains the URL (WikiBlame-style).
+ * - Cited on (`fetchCitedBy`): no API records who added a link, so we bisect
+ *   the page history for the first revision whose wikitext contains the URL
+ *   (WikiBlame-style).
  * - Anchor: Parsoid HTML → the `cite_note-…` reference that holds the link
  *   (fetched lazily, on hover/focus of the article link).
  *
@@ -125,8 +125,10 @@ export interface Citation {
   language: string
   host: string
   title: string
-  /** URL as stored in the wiki's external-links table. */
+  /** URL as stored in the wiki's external-links table (DOI matches: the work's doi.org link). */
   url: string
+  /** Set when found by DOI — the article's source mentions it, in whatever form. */
+  doi?: string
   /** `undefined` while loading; `null` when unavailable. */
   views?: number | null
   citedBy?: CitedByInfo | null
@@ -149,6 +151,33 @@ export interface SourceQuery {
   queries: string[]
   /** `*.domain` — every link on the domain and its subdomains, in one query. */
   domainWildcard: string
+  /** DOI found in the URL (e.g. "10.1371/journal.pone.0008776"), if any. */
+  doi: string | null
+  /**
+   * Match the work, not the URL: find articles whose source mentions the DOI —
+   * publisher URLs, doi.org links and {{doi}} / {{cite journal |doi=}} templates
+   * alike. Set by the caller when there's a DOI and "Exact URL only" is off.
+   */
+  byDoi?: boolean
+}
+
+/** Trailing path segments publishers add after the DOI itself. */
+const DOI_SUFFIX = /\/(abstract|full|fulltext|pdf|epdf|html|summary|references|figures|meta)$/i
+
+/**
+ * The DOI inside a URL (journals.plos.org/…?id=10.1371/…, doi.org/10.…,
+ * link.springer.com/article/10.…), or null. DOIs are "10.<registrant>/<suffix>".
+ */
+export function extractDoi(raw: string): string | null {
+  let text = raw
+  try {
+    text = decodeURIComponent(raw)
+  } catch {
+    // Malformed escape — search the raw form.
+  }
+  const match = text.match(/\b(10\.\d{4,9}\/[^\s?#&"<>|]+)/i)
+  if (!match) return null
+  return match[1].replace(/[.,;:)\]]+$/, '').replace(DOI_SUFFIX, '')
 }
 
 /** Lowercased host without `www.`, path without trailing slash, query kept, fragment dropped. */
@@ -164,8 +193,11 @@ export function normalizeUrl(raw: string): string | null {
 }
 
 export function parseSourceInput(input: string): SourceQuery | null {
-  const trimmed = input.trim()
+  let trimmed = input.trim()
   if (!trimmed) return null
+  // A bare DOI ("10.1371/…" or "doi:10.1371/…") is checked as its doi.org link.
+  const bareDoi = trimmed.match(/^(?:doi:\s*)?(10\.\d{4,9}\/\S+)$/i)
+  if (bareDoi) trimmed = `https://doi.org/${bareDoi[1]}`
   let url: URL
   try {
     url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`)
@@ -185,6 +217,7 @@ export function parseSourceInput(input: string): SourceQuery | null {
     domainOnly: !rest,
     queries: [`${bareHost}${rest}`, `www.${bareHost}${rest}`],
     domainWildcard: `*.${bareHost}`,
+    doi: rest ? extractDoi(url.href) : null,
   }
 }
 
@@ -307,7 +340,60 @@ async function extUrlUsage(host: string, query: string, signal: AbortSignal) {
  * filter locally; only if that pages (too many links to the domain) do we fall
  * back to the two exact queries. Most wikis then cost one request, not two.
  */
-async function searchWiki(wiki: Wiki, source: SourceQuery, signal: AbortSignal): Promise<Citation[]> {
+/** Wiki search results to keep per request (the API's max for a client like ours). */
+const SEARCH_LIMIT = 500
+
+/**
+ * Articles whose source text mentions the DOI — `insource:"10.…"` on the
+ * wiki's search engine. Catches publisher URLs (they contain the DOI), doi.org
+ * links and citation templates in one request. `total` is the full hit count,
+ * which can exceed what's returned.
+ */
+async function searchWikiByDoi(
+  wiki: Wiki,
+  doi: string,
+  signal: AbortSignal,
+): Promise<{ hits: Citation[]; total: number }> {
+  const { lang, host, name } = wiki
+  const data = await actionApi(
+    host,
+    {
+      action: 'query',
+      list: 'search',
+      srsearch: `insource:"${doi.replace(/"/g, '')}"`,
+      srnamespace: '0',
+      srlimit: String(SEARCH_LIMIT),
+      srprop: '',
+      srinfo: 'totalhits',
+    },
+    signal,
+  )
+  const results = (data.query?.search ?? []) as { title: string }[]
+  return {
+    total: data.query?.searchinfo?.totalhits ?? results.length,
+    hits: results.map((result) => ({
+      key: `${lang}:${result.title}`,
+      lang,
+      language: name,
+      host,
+      title: result.title,
+      url: `https://doi.org/${doi}`,
+      doi,
+    })),
+  }
+}
+
+async function searchWiki(
+  wiki: Wiki,
+  source: SourceQuery,
+  signal: AbortSignal,
+): Promise<{ hits: Citation[]; total: number }> {
+  if (source.byDoi && source.doi) return searchWikiByDoi(wiki, source.doi, signal)
+  const hits = await searchWikiByUrl(wiki, source, signal)
+  return { hits, total: hits.length }
+}
+
+async function searchWikiByUrl(wiki: Wiki, source: SourceQuery, signal: AbortSignal): Promise<Citation[]> {
   const { lang, host, name } = wiki
   const byTitle = new Map<string, Citation>()
   const add = (hits: UsageHit[]) => {
@@ -333,14 +419,15 @@ async function searchWiki(wiki: Wiki, source: SourceQuery, signal: AbortSignal):
 }
 
 /**
- * Search `wikis` in order; calls `onFound` as each wiki's hits arrive and
- * `onSearched` after every wiki for progress (`ok: false` when it errored).
+ * Search `wikis` in order; calls `onFound` as each wiki's hits arrive (with
+ * that wiki's full hit count, which a DOI search can exceed the hits returned)
+ * and `onSearched` after every wiki for progress (`ok: false` when it errored).
  */
 export async function findCitations(
   wikis: Wiki[],
   source: SourceQuery,
   signal: AbortSignal,
-  onFound: (hits: Citation[]) => void,
+  onFound: (hits: Citation[], total: number) => void,
   onSearched: (ok: boolean) => void,
 ): Promise<void> {
   await runPool(
@@ -349,9 +436,9 @@ export async function findCitations(
     async (wiki) => {
       let ok = false
       try {
-        const hits = await searchWiki(wiki, source, signal)
+        const { hits, total } = await searchWiki(wiki, source, signal)
         ok = true
-        if (!signal.aborted && hits.length) onFound(hits)
+        if (!signal.aborted && hits.length) onFound(hits, total)
       } finally {
         if (!signal.aborted) onSearched(ok)
       }
@@ -424,13 +511,31 @@ function wikitextNeedles(url: string): string[] {
 }
 
 /**
+ * Does a revision's wikitext cite this? URL matches look for the URL itself;
+ * DOI matches look for the DOI in any form (template parameter, doi.org link
+ * with "/" or "%2F", publisher URL) — case-insensitively, as DOIs are.
+ */
+function citationMatcher(citation: Citation): (wikitext: string) => boolean {
+  if (citation.doi) {
+    const doi = citation.doi.toLowerCase()
+    const forms = [doi, doi.replace('/', '%2f')]
+    return (wikitext) => {
+      const lower = wikitext.toLowerCase()
+      return forms.some((form) => lower.includes(form))
+    }
+  }
+  const needles = wikitextNeedles(citation.url)
+  return (wikitext) => needles.some((needle) => wikitext.includes(needle))
+}
+
+/**
  * Which of `revids` contain the URL, in one request. Revisions whose content
  * didn't come back (hidden, or cut by the API's result-size cap) are omitted.
  */
 async function revisionsContaining(
   host: string,
   revids: number[],
-  needles: string[],
+  cites: (wikitext: string) => boolean,
   signal: AbortSignal,
 ): Promise<Map<number, boolean>> {
   const data = await actionApi(
@@ -443,7 +548,7 @@ async function revisionsContaining(
     for (const revision of page.revisions ?? []) {
       const content: unknown = revision.slots?.main?.content
       if (typeof content !== 'string') continue
-      result.set(revision.revid, needles.some((needle) => content.includes(needle)))
+      result.set(revision.revid, cites(content))
     }
   }
   return result
@@ -489,8 +594,8 @@ export async function fetchCitedBy(citation: Citation, signal: AbortSignal): Pro
   }
   if (!revisions.length) return null
 
-  const needles = wikitextNeedles(citation.url)
-  // Invariant: revisions[lo] lacks the URL (-1 = before the first revision); revisions[hi] has it.
+  const cites = citationMatcher(citation)
+  // Invariant: revisions[lo] lacks the citation (-1 = before the first revision); revisions[hi] has it.
   let lo = -1
   let hi = revisions.length - 1
   let firstRound = true
@@ -501,7 +606,7 @@ export async function fetchCitedBy(citation: Citation, signal: AbortSignal): Pro
     const results = await revisionsContaining(
       citation.host,
       probes.map((i) => revisions[i].revid),
-      needles,
+      cites,
       signal,
     )
     const has = (i: number) => results.get(revisions[i].revid)
@@ -528,8 +633,18 @@ export async function fetchReferenceAnchor(citation: Citation, signal: AbortSign
   if (!response.ok) return null
   const doc = new DOMParser().parseFromString(await response.text(), 'text/html')
   const target = normalizeUrl(citation.url)
+  const doi = citation.doi?.toLowerCase()
+  const matches = (href: string) => {
+    if (!doi) return normalizeUrl(href) === target
+    // DOI matches: any link carrying the DOI (doi.org, publisher, …).
+    try {
+      return decodeURIComponent(href).toLowerCase().includes(doi)
+    } catch {
+      return href.toLowerCase().includes(doi)
+    }
+  }
   for (const link of doc.querySelectorAll<HTMLAnchorElement>('a[href]')) {
-    if (normalizeUrl(link.getAttribute('href') ?? '') !== target) continue
+    if (!matches(link.getAttribute('href') ?? '')) continue
     const note = link.closest('li[id^="cite_note"]')
     if (note) return note.id
   }

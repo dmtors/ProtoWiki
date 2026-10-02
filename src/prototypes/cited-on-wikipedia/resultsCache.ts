@@ -2,14 +2,16 @@ import type { Citation } from './citations'
 
 /** Completed checks, keyed by normalised source URL — repeat checks render instantly. */
 
-// v2: rows carry Wikidata IDs for grouping — v1 entries would render ungrouped.
-const PREFIX = 'protowiki:cited-on-wikipedia:v2:'
+// v3: rows carry the citing edit (Cited on) — older entries would show it loading forever.
+const PREFIX = 'protowiki:cited-on-wikipedia:v3:'
 const TTL_MS = 24 * 60 * 60 * 1000
 
 export interface CachedCheck {
   savedAt: number
   wikisTotal: number
   truncated: boolean
+  /** Citing articles found in total — more than `rows` when capped. */
+  totalFound?: number
   rows: Citation[]
 }
 
