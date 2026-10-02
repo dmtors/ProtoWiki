@@ -1,8 +1,12 @@
 /** Wikimedia Attribution API (beta) — Core REST `/w/rest.php/attribution/v0-beta/…` */
 
 export interface AttributionLicense {
+  /** Machine name, e.g. "cc-by-sa-4.0" or "pd". */
   title: string
-  url: string
+  /** Human-readable short name, e.g. "CC BY-SA 4.0" or "PDM", when the API sends one. */
+  short?: string
+  /** `null` for licenses with no deed page (e.g. public domain on Commons). */
+  url: string | null
 }
 
 export interface AttributionBrandMark {
