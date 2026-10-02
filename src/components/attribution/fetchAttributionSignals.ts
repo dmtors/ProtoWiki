@@ -35,14 +35,22 @@ function parseEssential(raw: unknown): AttributionEssential | null {
   if (typeof title !== 'string' || typeof link !== 'string') return null
   if (typeof license !== 'object' || license === null) return null
   const licenseRecord = license as Record<string, unknown>
-  if (typeof licenseRecord.title !== 'string' || typeof licenseRecord.url !== 'string') {
+  // `url` is null for licenses with no deed page — public domain files on Commons.
+  if (
+    typeof licenseRecord.title !== 'string' ||
+    (typeof licenseRecord.url !== 'string' && licenseRecord.url !== null)
+  ) {
     return null
   }
 
   const essential: AttributionEssential = {
     title,
     link,
-    license: { title: licenseRecord.title, url: licenseRecord.url },
+    license: {
+      title: licenseRecord.title,
+      url: licenseRecord.url as string | null,
+      ...(typeof licenseRecord.short === 'string' ? { short: licenseRecord.short } : {}),
+    },
   }
 
   if (typeof record.credit === 'string') {

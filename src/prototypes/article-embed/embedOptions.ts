@@ -20,7 +20,7 @@ export const EMBED_SIZES: { value: EmbedSize; label: string }[] = [
 ]
 
 export const EMBED_SIGNALS: { value: EmbedSignal; label: string }[] = [
-  { value: 'reads', label: 'Reads' },
+  { value: 'reads', label: 'Views' },
   { value: 'references', label: 'References' },
   { value: 'updated', label: 'Last updated' },
   { value: 'contributors', label: 'Contributors' },
@@ -43,7 +43,7 @@ export const DEFAULT_EMBED_OPTIONS: EmbedOptions = {
 export const EMBED_FRAME_HEIGHT: Record<EmbedSize, number> = {
   small: 160,
   medium: 230,
-  large: 620,
+  large: 650,
 }
 
 /** Serialise options into embed-route query params. */

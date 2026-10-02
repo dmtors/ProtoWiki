@@ -20,6 +20,7 @@ import {
 } from '@wikimedia/codex-icons'
 
 import { formatCompactCount, sourceLabel } from '@/components/attribution/formatAttribution'
+import { fetchAttributionSignals } from '@/components/attribution/fetchAttributionSignals'
 import { useAttributionSignals } from '@/components/attribution/useAttributionSignals'
 
 import { DEFAULT_EMBED_OPTIONS, type EmbedLink, type EmbedSignal, type EmbedSize } from './embedOptions'
@@ -86,28 +87,69 @@ watch(
   { immediate: true },
 )
 
+/**
+ * Large size only: the lead image's credit and license, from the Attribution
+ * API on its file page (Commons, or the local wiki for non-free files).
+ */
+const imageCredit = ref<{ credit: string | null; license: string } | null>(null)
+
+/** Plain text, no links: "Author, License, via Wikimedia Commons". */
+const imageCreditText = computed(() => {
+  if (!imageCredit.value) return ''
+  const via = summary.value?.imageFile?.host === 'commons.wikimedia.org' ? 'via Wikimedia Commons' : 'via Wikipedia'
+  return [imageCredit.value.credit, imageCredit.value.license, via].filter(Boolean).join(', ')
+})
+let imageCreditAbort: AbortController | null = null
+
+watch(
+  () => [props.size === 'large', summary.value?.imageFile] as const,
+  async ([large, file]) => {
+    if (!large || !file || imageCredit.value) return
+    imageCreditAbort?.abort()
+    imageCreditAbort = new AbortController()
+    try {
+      const { essential } = await fetchAttributionSignals(file.title, {
+        host: file.host,
+        signal: imageCreditAbort.signal,
+      })
+      imageCredit.value = {
+        credit: essential.credit ?? null,
+        // "pd" / "PDM" read better spelled out, as Commons' own attribution text does.
+        license: essential.license.title === 'pd' ? 'Public domain' : (essential.license.short ?? essential.license.title),
+      }
+    } catch {
+      // Aborted, or no attribution for the file — the caption is omitted.
+    }
+  },
+  { immediate: true },
+)
+
 onScopeDispose(() => {
   summaryAbort?.abort()
   sourcesAbort?.abort()
+  imageCreditAbort?.abort()
 })
 
 const trust = computed(() => attribution.value?.trust_and_relevance)
 const mostRead = computed(() => Boolean(trust.value?.trending?.top?.read))
 
-/** Compact relative time: "30min ago", "5h ago", "15d ago", "2mo ago", "3y ago". */
+/** "30 minutes ago", "5 hours ago", "1 day ago", "2 weeks ago"; a month or older: "09/2025". */
 function timeAgo(iso: string): string | null {
-  const then = new Date(iso).getTime()
+  const date = new Date(iso)
+  const then = date.getTime()
   if (Number.isNaN(then)) return null
+  const ago = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'} ago`
+
   const minutes = Math.floor((Date.now() - then) / 60_000)
   if (minutes < 1) return 'Just now'
-  if (minutes < 60) return `${minutes}min ago`
+  if (minutes < 60) return ago(minutes, 'minute')
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
+  if (hours < 24) return ago(hours, 'hour')
   const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d ago`
-  const months = Math.floor(days / 30)
-  if (months < 12) return `${months}mo ago`
-  return `${Math.floor(days / 365)}y ago`
+  if (days < 7) return ago(days, 'day')
+  if (days < 30) return ago(Math.floor(days / 7), 'week')
+  // A month or older: the month itself, "09/2025" (UTC, as page histories are).
+  return `${String(date.getUTCMonth() + 1).padStart(2, '0')}/${date.getUTCFullYear()}`
 }
 
 function countLabel(count: number | null | undefined, noun: string): string | null {
@@ -129,7 +171,7 @@ const signalItems = computed(() => {
     // Attribution API `page_views` covers the last 30 days — label the window.
     reads:
       typeof trust.value?.page_views === 'number'
-        ? `${formatCompactCount(trust.value.page_views)} reads last month`
+        ? `${formatCompactCount(trust.value.page_views)} views last month`
         : null,
     references: countLabel(trust.value?.reference_count, 'reference'),
     updated: trust.value?.last_updated ? timeAgo(trust.value.last_updated) : null,
@@ -203,12 +245,11 @@ const showSignalsRow = computed(
 
         <p v-if="!isSmall && summary?.extract" class="embed-card__extract">{{ summary.extract }}</p>
 
-        <img
-          v-if="props.size === 'large' && summary?.largeImageUrl"
-          class="embed-card__image"
-          :src="summary.largeImageUrl"
-          alt=""
-        />
+        <figure v-if="props.size === 'large' && summary?.largeImageUrl" class="embed-card__figure">
+          <img class="embed-card__image" :src="summary.largeImageUrl" alt="" />
+          <!-- "Author, License, via Wikimedia Commons" — Commons' own attribution format. -->
+          <figcaption v-if="imageCredit" class="embed-card__credit">{{ imageCreditText }}</figcaption>
+        </figure>
 
         <footer v-if="!isSmall" class="embed-card__footer">
           <span class="embed-card__source">
@@ -357,12 +398,28 @@ const showSignalsRow = computed(
   height: 40px;
 }
 
+.embed-card__figure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-25);
+  margin: 0;
+}
+
 .embed-card__image {
   display: block;
   width: 100%;
   aspect-ratio: 16 / 9;
   object-fit: cover;
   border-radius: var(--border-radius-base);
+}
+
+/* Figure caption text style — all four tokens — in the subtle colour. */
+.embed-card__credit {
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-small);
+  color: var(--color-subtle);
 }
 
 .embed-card__error {

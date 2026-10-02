@@ -8,6 +8,26 @@ export interface EmbedSummary {
   thumbnailUrl: string | null
   /** Wider rendition for the large embed — a scaled thumb, or the original when it's already small. */
   largeImageUrl: string | null
+  /** The lead image's file page, for its credit: Commons, or a local wiki for non-free files. */
+  imageFile: { host: string; title: string } | null
+}
+
+/**
+ * File page for an upload.wikimedia.org original, e.g.
+ * `…/wikipedia/commons/2/2a/Lspn_comet_halley.jpg` → commons.wikimedia.org, `File:Lspn comet halley.jpg`;
+ * `…/wikipedia/en/…` → en.wikipedia.org (local, usually non-free files).
+ */
+function imageFileFromUrl(src: string): EmbedSummary['imageFile'] {
+  try {
+    const url = new URL(src)
+    const match = url.pathname.match(/^\/wikipedia\/([^/]+)\/(?:[0-9a-f]\/[0-9a-f]{2}\/)([^/]+)$/)
+    if (!match) return null
+    const [, project, file] = match
+    const host = project === 'commons' ? 'commons.wikimedia.org' : `${project}.wikipedia.org`
+    return { host, title: `File:${decodeURIComponent(file).replace(/_/g, ' ')}` }
+  } catch {
+    return null
+  }
 }
 
 /** Lead extract + images from REST page/summary on the given wiki host. */
@@ -21,7 +41,7 @@ export async function fetchSummary(
     signal: options.signal,
     headers: wikimediaApiFetchHeaders('article-embed-summary'),
   })
-  if (!response.ok) return { extract: '', thumbnailUrl: null, largeImageUrl: null }
+  if (!response.ok) return { extract: '', thumbnailUrl: null, largeImageUrl: null, imageFile: null }
 
   const data = (await response.json()) as {
     extract?: string
@@ -42,5 +62,6 @@ export async function fetchSummary(
     extract: typeof data.extract === 'string' ? data.extract.trim() : '',
     thumbnailUrl,
     largeImageUrl,
+    imageFile: original?.source ? imageFileFromUrl(original.source) : null,
   }
 }
