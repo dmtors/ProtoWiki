@@ -158,7 +158,7 @@ onBeforeUnmount(() => {
           <p v-if="preview.extract" class="panel__extract">{{ preview.extract }}</p>
 
           <a class="panel__read-more" :href="preview.link" target="_blank" rel="noopener">
-            Read more on Wikipedia
+            Learn more on Wikipedia
             <CdxIcon :icon="cdxIconLinkExternal" size="small" />
           </a>
         </div>
