@@ -16,7 +16,18 @@ export default [
     rules: {
       'vue/multi-word-component-names': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^cdxIcon' },
+      ],
+    },
+  },
+  {
+    // Material Web elements use native `slot="…"` attributes (web-component
+    // slots, not Vue slots), so the Vue 2 deprecation rule doesn't apply.
+    files: ['src/prototypes/video-first-app-android/**/*.vue'],
+    rules: {
+      'vue/no-deprecated-slot-attribute': 'off',
     },
   },
 ]

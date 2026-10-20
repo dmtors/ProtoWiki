@@ -1,0 +1,137 @@
+/*
+ * Material 3 theme for the Android prototype, built on Codex colour tokens.
+ * Every M3 colour role points at a Codex token, so light / dark mode and Codex
+ * colour patches flow straight through. Shape, type and motion are M3.
+ *
+ * The mapping is declared on the prototype root AND on every `[data-theme]`
+ * island inside it: custom properties resolve where they're declared, so a
+ * dark feed inside a light app has to re-resolve them against dark tokens.
+ */
+
+.vfa,
+.vfa [data-theme] {
+  /* Primary — Codex progressive blue */
+  --md-sys-color-primary: var(--background-color-progressive);
+  --md-sys-color-on-primary: var(--color-inverted);
+  --md-sys-color-primary-container: var(--background-color-progressive-subtle);
+  --md-sys-color-on-primary-container: var(--color-emphasized);
+
+  /* Secondary — neutral greys; the container tints the nav indicator blue */
+  --md-sys-color-secondary: var(--color-subtle);
+  --md-sys-color-on-secondary: var(--color-inverted);
+  --md-sys-color-secondary-container: var(--background-color-progressive-subtle);
+  --md-sys-color-on-secondary-container: var(--color-emphasized);
+
+  --md-sys-color-tertiary: var(--color-visited);
+  --md-sys-color-on-tertiary: var(--color-inverted);
+
+  --md-sys-color-error: var(--color-destructive);
+  --md-sys-color-on-error: var(--color-inverted);
+  --md-sys-color-error-container: var(--background-color-destructive-subtle);
+  --md-sys-color-on-error-container: var(--color-emphasized);
+
+  /* Surfaces — Codex base and its interactive / neutral steps */
+  --md-sys-color-background: var(--background-color-base);
+  --md-sys-color-on-background: var(--color-base);
+  --md-sys-color-surface: var(--background-color-base);
+  --md-sys-color-surface-bright: var(--background-color-base);
+  --md-sys-color-surface-dim: var(--background-color-interactive);
+  --md-sys-color-on-surface: var(--color-base);
+  --md-sys-color-surface-variant: var(--background-color-interactive);
+  --md-sys-color-on-surface-variant: var(--color-subtle);
+  --md-sys-color-surface-container-lowest: var(--background-color-base);
+  --md-sys-color-surface-container-low: var(--background-color-interactive-subtle);
+  --md-sys-color-surface-container: var(--background-color-interactive-subtle);
+  --md-sys-color-surface-container-high: var(--background-color-neutral);
+  --md-sys-color-surface-container-highest: var(--background-color-interactive);
+
+  --md-sys-color-outline: var(--border-color-interactive);
+  --md-sys-color-outline-variant: var(--border-color-subtle);
+
+  --md-sys-color-inverse-surface: var(--background-color-inverted);
+  --md-sys-color-inverse-on-surface: var(--color-inverted);
+  --md-sys-color-inverse-primary: var(--border-color-progressive);
+
+  --md-sys-color-scrim: var(--background-color-backdrop-dark);
+  --md-sys-color-shadow: var(--background-color-backdrop-dark);
+
+  /* Type — Roboto, Android's system face */
+  --md-ref-typeface-brand: 'Roboto', var(--font-family-sans);
+  --md-ref-typeface-plain: 'Roboto', var(--font-family-sans);
+  /* Emphasis reads as real bold: M3's medium (500) is too close to regular in Roboto. */
+  --md-ref-typeface-weight-medium: 700;
+  --md-ref-typeface-weight-bold: 700;
+
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-ref-typeface-plain);
+}
+
+/*
+ * Brand blue: Codex progressive as it resolves in the LIGHT theme (the shell
+ * root carries data-theme="light"), so accents stay bright blue even inside the
+ * dark feed. Declared only here, never in islands, so islands inherit it as-is.
+ */
+.vfa {
+  --vfa-brand-blue: var(--background-color-progressive);
+  --vfa-on-brand-blue: var(--color-inverted-fixed);
+  /* Text and icons laid over video: always white, for legibility on any frame. */
+  --vfa-on-media: var(--color-inverted-fixed);
+}
+
+/* Accent containers (nav indicator, toolbar selection, filled buttons) use the brand blue. */
+.vfa,
+.vfa [data-theme] {
+  --md-sys-color-primary-container: var(--vfa-brand-blue);
+  --md-sys-color-on-primary-container: var(--vfa-on-brand-blue);
+  --md-sys-color-secondary-container: var(--vfa-brand-blue);
+  --md-sys-color-on-secondary-container: var(--vfa-on-brand-blue);
+  --md-filled-button-container-color: var(--vfa-brand-blue);
+  --md-filled-button-label-text-color: var(--vfa-on-brand-blue);
+}
+
+/* Article titles keep the serif voice: Droid Serif, Android's classic serif. */
+.vfa .vfa-serif {
+  font-family: 'Droid Serif', var(--font-family-serif);
+  font-weight: 400;
+}
+
+/* M3 shape scale (dp) and motion, for hand-built surfaces. */
+.vfa {
+  --vfa-shape-small: 8px;
+  --vfa-shape-medium: 12px;
+  --vfa-shape-large: 16px;
+  --vfa-shape-extra-large: 28px;
+  --vfa-ease-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --vfa-ease-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --vfa-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Codex icons inside Material Web controls render at M3's 24dp. */
+.vfa md-icon,
+.vfa md-icon-button,
+.vfa md-filled-tonal-icon-button,
+.vfa md-fab {
+  --md-icon-size: 24px;
+}
+
+/* Phone column is the containing block for sheets, dialogs and the snackbar. */
+.vfa .mobile-wrapper__column {
+  position: relative;
+  overflow: hidden;
+  transform: translateZ(0);
+}
+
+/* Screens lay out edge to edge (the app chrome's 24px gutter is not M3). */
+.vfa .app-chrome-wrapper__content {
+  padding-inline: 0;
+  background-color: var(--md-sys-color-surface);
+}
+
+.vfa a[data-title] {
+  color: var(--md-sys-color-primary);
+  text-decoration: none;
+}
+
+.vfa a.vf-link--missing {
+  color: var(--md-sys-color-error);
+}

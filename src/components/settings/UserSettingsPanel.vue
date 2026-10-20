@@ -107,7 +107,7 @@ const editedPagesText = computed({
   display: inline-flex;
   align-items: stretch;
   width: 100%;
-  max-width: var(--size-2800);
+  max-width: var(--size-2400);
 }
 
 .user-settings-panel__fields {

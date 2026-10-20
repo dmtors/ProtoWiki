@@ -1,0 +1,157 @@
+/*
+ * Surface styles for the video-first app. Unscoped because they reach Codex
+ * component roots (dialog, backdrop, toast container) and ProtoWiki chrome
+ * roots; every selector is prefixed with the prototype root `.video-first-app`.
+ * Codex paints component states — these rules size, place, and apply the
+ * deltas the design asks for (sheet shape, round add button, link colours).
+ */
+
+/* Make the phone column the containing block, so teleported dialogs, toasts
+   and the overlay header stay inside the phone instead of the whole page. */
+.video-first-app .mobile-wrapper__column {
+  position: relative;
+  overflow: hidden;
+  transform: translateZ(0);
+}
+
+/* — Header — */
+
+.video-first-app--overlay-header .video-first-app__header {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.video-first-app--overlay-header .video-first-app__header :is(button, a) {
+  pointer-events: auto;
+}
+
+/* — Body: every screen lays out edge to edge and pads itself — */
+
+.video-first-app__body {
+  position: relative;
+  min-height: 100%;
+  margin-inline: calc(-1 * var(--spacing-150));
+}
+
+.video-first-app--overlay-header .video-first-app__body {
+  height: 100%;
+}
+
+/* — Bottom bar: always dark — */
+
+.video-first-app__bar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-around;
+  box-sizing: border-box;
+  padding: var(--spacing-75) var(--spacing-50) var(--spacing-100);
+  background-color: var(--background-color-base);
+  color: var(--color-base);
+}
+
+/* Floating controls (article tab pill) sit just above the bar, over the content. */
+.video-first-app__float {
+  position: relative;
+  z-index: 3;
+  height: 0;
+}
+
+.video-first-app__float > * {
+  position: absolute;
+  inset: auto var(--spacing-150) var(--spacing-150);
+}
+
+.video-first-app__create.cdx-button {
+  border-radius: var(--border-radius-circle);
+}
+
+.video-first-app__layer {
+  height: 0;
+}
+
+/* — Sheets: Codex dialogs anchored to the bottom of the phone, no dimming — */
+
+.video-first-app .cdx-dialog-backdrop {
+  align-items: flex-end;
+  width: 100%;
+  height: 100%;
+  background-color: transparent;
+}
+
+.video-first-app .video-first-app__sheet.cdx-dialog {
+  width: 100%;
+  max-width: none;
+  max-height: 85%;
+  border-radius: calc(var(--border-radius-base) * 4) calc(var(--border-radius-base) * 4) 0 0;
+  box-shadow: none;
+}
+
+.video-first-app
+  .video-first-app__sheet
+  :is(.cdx-dialog__header, .cdx-dialog__body, .cdx-dialog__footer) {
+  padding-inline: var(--spacing-100);
+}
+
+/* — Toasts: above the bottom bar, inside the phone — */
+
+.video-first-app .cdx-toast-container {
+  bottom: calc(var(--size-400) + var(--spacing-200));
+}
+
+/* — Shared content helpers — */
+
+.video-first-app__link,
+.video-first-app [data-title] {
+  color: var(--color-link);
+  text-decoration: none;
+}
+
+.video-first-app__link:hover,
+.video-first-app [data-title]:hover {
+  text-decoration: underline;
+}
+
+.video-first-app .vf-link--missing {
+  color: var(--color-link-red);
+}
+
+.video-first-app__muted {
+  margin: 0;
+  color: var(--color-subtle);
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.video-first-app__sheet-heading {
+  margin: var(--spacing-100) 0 var(--spacing-50);
+  font-weight: var(--font-weight-bold);
+}
+
+.video-first-app__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.video-first-app__rows > li {
+  padding-block: var(--spacing-25);
+}
+
+.video-first-app__interest {
+  display: flex;
+  justify-content: space-between;
+}
+
+.video-first-app__grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--spacing-100);
+}
+
+/* Places fills the screen height so the map can run under the tab pill. */
+.video-first-app__body:has(.vf-article--places) {
+  height: 100%;
+}

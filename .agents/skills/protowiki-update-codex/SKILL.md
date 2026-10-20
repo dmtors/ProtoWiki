@@ -199,6 +199,26 @@ changes:
 - Icons across chrome header/footer and homepage modules.
 - Toggle light/dark theme to confirm token injection in
   [`src/theme.ts`](../../../src/theme.ts) still cascades.
+- If any patches are committed, check stock and patched both still render —
+  `npm run codex:use-stock` / `npm run codex:use-patch` (see
+  [`protowiki-codex-patching`](../protowiki-codex-patching/SKILL.md)).
+- Hand-built surfaces that wear Codex classes — if `CdxCard.css` (or another
+  mirrored component) changed, diff the installed file and update the
+  `html[data-codex-patched]` alias block in that prototype's `*-surface.css`
+  (see [`protowiki-codex-patching` → card hover](../protowiki-codex-patching/references/building-for-patches.md#card-hover-through-an-overlay-link-gated-alias-blocks)).
+
+### Regenerate the committed patch
+
+A patch in `patches/codex/` is anchored to the published version you just
+replaced, so `npm install` will refuse it after a bump. Re-run
+`npm run codex:patch -- <url>`, or run `npm run codex:reset` if
+the change has now been released.
+
+### Trialling an unmerged Codex change
+
+See [`protowiki-codex-patching`](../protowiki-codex-patching/SKILL.md): the
+committed patch, stock/patched switching, side-by-side deploys, and the rules for
+CSS that follows Codex changes.
 
 ## Why the skills, not just the package?
 

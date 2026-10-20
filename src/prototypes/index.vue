@@ -8,13 +8,16 @@ definePage({
 
 import { useRoute, useRouter } from 'vue-router'
 
-import { CdxButton, CdxCard, CdxIcon, CdxInfoChip, CdxTab, CdxTabs } from '@wikimedia/codex'
-import { cdxIconAppearance, cdxIconUserAvatar } from '@wikimedia/codex-icons'
+import { CdxButton, CdxCard, CdxIcon, CdxTab, CdxTabs } from '@wikimedia/codex'
+import { cdxIconAppearance, cdxIconLogoCodex, cdxIconUserAvatar } from '@wikimedia/codex-icons'
 
+import CodexPatchMessage from '@/components/CodexPatchMessage.vue'
 import PlainWrapper from '@/components/PlainWrapper.vue'
 import AppearanceSettingsPanel from '@/components/settings/AppearanceSettingsPanel.vue'
+import CodexSettingsPanel from '@/components/settings/CodexSettingsPanel.vue'
 import SettingsPopover from '@/components/settings/SettingsPopover.vue'
 import UserSettingsPanel from '@/components/settings/UserSettingsPanel.vue'
+import { CODEX_SETTINGS_POPOVER_OPEN_KEY } from '@/composables/useCodexBuild'
 import { useGalleryTab } from '@/composables/useGalleryTab'
 import { usePrototypeGallery } from '@/composables/usePrototypeGallery'
 import { PROTOWIKI_API_PROJECT_URL, PROTOWIKI_LICENSE_URL } from '@/config'
@@ -40,6 +43,22 @@ const docsUrl = `${PROTOWIKI_API_PROJECT_URL}#prototyping-system`
   <PlainWrapper heading="ProtoWiki">
     <template #actions>
       <div class="prototype-index__settings-toolbar">
+        <SettingsPopover :restore-open-key="CODEX_SETTINGS_POPOVER_OPEN_KEY">
+          <template #default="{ toggle, open }">
+            <CdxButton
+              weight="quiet"
+              :icon-only="true"
+              aria-label="Codex settings"
+              :aria-expanded="open"
+              @click="toggle"
+            >
+              <CdxIcon :icon="cdxIconLogoCodex" />
+            </CdxButton>
+          </template>
+          <template #panel>
+            <CodexSettingsPanel />
+          </template>
+        </SettingsPopover>
         <SettingsPopover>
           <template #default="{ toggle, open }">
             <CdxButton
@@ -75,6 +94,7 @@ const docsUrl = `${PROTOWIKI_API_PROJECT_URL}#prototyping-system`
       </div>
     </template>
     <div class="prototype-index">
+      <CodexPatchMessage class="prototype-index__codex-message" />
       <CdxTabs v-model:active="galleryTab" class="prototype-index__tabs">
         <CdxTab v-for="tab in GALLERY_TABS" :key="tab.value" :name="tab.value" :label="tab.label">
           <div v-if="galleryTab === tab.value" class="prototype-index__list">
@@ -87,17 +107,10 @@ const docsUrl = `${PROTOWIKI_API_PROJECT_URL}#prototyping-system`
                 :key="entry.path"
                 class="prototype-index__card"
               >
-                <CdxCard :url="prototypeHref(entry.path)">
+                <CdxCard :url="prototypeHref(entry.path)" :icon="entry.icon">
                   <template #title>{{ entry.title }}</template>
                   <template v-if="entry.description" #description>{{ entry.description }}</template>
-                  <template #supporting-text>
-                    <div class="prototype-index__chips">
-                      <CdxInfoChip status="subtle">{{ entry.platformLabel }}</CdxInfoChip>
-                      <CdxInfoChip v-if="entry.supportingText" status="subtle">{{
-                        entry.supportingText
-                      }}</CdxInfoChip>
-                    </div>
-                  </template>
+                  <template #supporting-text>{{ entry.supportingText }}</template>
                 </CdxCard>
               </div>
 
@@ -109,17 +122,10 @@ const docsUrl = `${PROTOWIKI_API_PROJECT_URL}#prototyping-system`
                 :key="entry.path"
                 class="prototype-index__card"
               >
-                <CdxCard :url="prototypeHref(entry.path)">
+                <CdxCard :url="prototypeHref(entry.path)" :icon="entry.icon">
                   <template #title>{{ entry.title }}</template>
                   <template v-if="entry.description" #description>{{ entry.description }}</template>
-                  <template #supporting-text>
-                    <div class="prototype-index__chips">
-                      <CdxInfoChip status="subtle">{{ entry.platformLabel }}</CdxInfoChip>
-                      <CdxInfoChip v-if="entry.supportingText" status="subtle">{{
-                        entry.supportingText
-                      }}</CdxInfoChip>
-                    </div>
-                  </template>
+                  <template #supporting-text>{{ entry.supportingText }}</template>
                 </CdxCard>
               </div>
             </template>
@@ -133,17 +139,10 @@ const docsUrl = `${PROTOWIKI_API_PROJECT_URL}#prototyping-system`
                 a good starting point.
               </p>
               <div v-for="entry in entries" :key="entry.path" class="prototype-index__card">
-                <CdxCard :url="prototypeHref(entry.path)">
+                <CdxCard :url="prototypeHref(entry.path)" :icon="entry.icon">
                   <template #title>{{ entry.title }}</template>
                   <template v-if="entry.description" #description>{{ entry.description }}</template>
-                  <template #supporting-text>
-                    <div class="prototype-index__chips">
-                      <CdxInfoChip status="subtle">{{ entry.platformLabel }}</CdxInfoChip>
-                      <CdxInfoChip v-if="entry.supportingText" status="subtle">{{
-                        entry.supportingText
-                      }}</CdxInfoChip>
-                    </div>
-                  </template>
+                  <template #supporting-text>{{ entry.supportingText }}</template>
                 </CdxCard>
               </div>
             </template>
@@ -169,8 +168,18 @@ const docsUrl = `${PROTOWIKI_API_PROJECT_URL}#prototyping-system`
   gap: var(--spacing-25);
 }
 
+.prototype-index__codex-message {
+  margin-top: var(--spacing-75);
+  margin-bottom: var(--spacing-100);
+}
+
 .prototype-index__tabs {
   margin-top: var(--spacing-50);
+}
+
+/* Codex non-framed tabs inset the header 4px; zero it so labels match the h1/cards. */
+.prototype-index__tabs :deep(.cdx-tabs__header) {
+  margin-inline: 0;
 }
 
 .prototype-index__list {
@@ -182,12 +191,6 @@ const docsUrl = `${PROTOWIKI_API_PROJECT_URL}#prototyping-system`
 
 .prototype-index__card {
   min-width: 0;
-}
-
-.prototype-index__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-25);
 }
 
 .prototype-index__section-heading {
