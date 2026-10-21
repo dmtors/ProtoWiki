@@ -311,14 +311,13 @@ onBeforeUnmount(() => {
       >
         <md-ripple />
         <md-focus-ring inward />
-        <span class="vfa-post__title">
-          <span class="md-typescale-title-large vfa-serif">{{ props.post.articles[0] }}</span>
+        <!-- One line: a long title truncates, its count always stays visible. -->
+        <span class="vfa-post__title md-typescale-title-large vfa-serif">
+          <span class="vfa-post__name">{{ props.post.articles[0] }}</span>
           <span
             v-if="props.post.articles.length > 1"
-            class="vfa-post__more md-typescale-label-medium"
-          >
-            +{{ props.post.articles.length - 1 }}
-          </span>
+            class="vfa-post__more"
+          >, +{{ props.post.articles.length - 1 }}</span>
         </span>
         <span class="md-typescale-body-small">{{ reason }}</span>
       </button>
@@ -516,15 +515,23 @@ onBeforeUnmount(() => {
 /* Title + reason; the mute button (owned by the feed) sits at the top-right. */
 .vfa-post__topic {
   position: absolute;
-  /* Title line centred on the shared first-row line (inset + half the bar). */
+  /*
+   * Title line centred on the shared first-row line (inset + half the bar):
+   * 6px padding + half title-large's 28px line = 20px above that centre.
+   */
   top: calc(var(--vfa-top-inset) + var(--vfa-bar-height) / 2 - 20px);
-  right: 56px;
+  /*
+   * Clear of the header's buttons on the right (mute centred 10% in, zoom 40px
+   * left of it, 8px gap), so a long title wraps instead of running under them.
+   */
+  right: calc(10% + 68px);
   left: calc(var(--vfa-gutter) - 8px);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   width: fit-content;
-  max-width: calc(100% - 64px);
+  /* Hug short titles, but never grow past the space between left and right. */
+  max-width: calc(100% - (var(--vfa-gutter) - 8px) - (10% + 68px));
   padding: 6px 8px;
   border: 0;
   border-radius: var(--vfa-shape-medium);
@@ -538,20 +545,24 @@ onBeforeUnmount(() => {
 /* With a back button in the top-left corner, the title follows it. */
 .vfa-post--back .vfa-post__topic {
   left: calc(var(--vfa-icon-edge) + 40px);
-  max-width: calc(100% - var(--vfa-icon-edge) - 40px - 56px);
+  max-width: calc(100% - (var(--vfa-icon-edge) + 40px) - (10% + 68px));
 }
 
 .vfa-post__title {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  max-width: 100%;
+  white-space: nowrap;
 }
 
+.vfa-post__name {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+/* ", +2": the other connected articles; never truncated. */
 .vfa-post__more {
-  padding: 2px 8px;
-  border-radius: var(--vfa-shape-small);
-  background-color: var(--md-sys-color-secondary-container);
-  color: var(--md-sys-color-on-secondary-container);
+  flex: none;
 }
 
 .vfa-post__info {

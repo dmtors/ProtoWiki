@@ -244,13 +244,27 @@ async function loadLinkThumbs(): Promise<void> {
 // From the Links tab: jump to where the link first appears (the Read text, or
 // the infobox if that's the only place), scroll it into view and flash it.
 
+/** Link targets (as stored, HTML-escaped) in a chunk of rendered text. */
+function linkTargets(html: string): Set<string> {
+  return new Set([...html.matchAll(/data-title="([^"]*)"/g)].map((m) => m[1]))
+}
+
+const readTargets = computed(() => linkTargets(bodyHtml.value))
+const infoTargets = computed(() =>
+  linkTargets((article.value?.info ?? []).map((row) => row.html).join(' ')),
+)
+
+/** The view that shows a link (Read text first, else the infobox); null when neither does. */
+function whereInArticle(linkTitle: string): Tab | null {
+  // Rendered text stores titles HTML-escaped (see wikiApi.inlineHtml).
+  const target = escapeHtml(linkTitle)
+  if (readTargets.value.has(target)) return 'read'
+  return hasInfo.value && infoTargets.value.has(target) ? 'info' : null
+}
+
 async function showInArticle(linkTitle: string): Promise<void> {
   const selector = `[data-title="${CSS.escape(linkTitle)}"]`
-  // Rendered text stores titles HTML-escaped (see wikiApi.inlineHtml).
-  const attr = `data-title="${escapeHtml(linkTitle)}"`
-  const inRead = bodyHtml.value.includes(attr)
-  const inInfo = article.value?.info.some((row) => row.html.includes(attr))
-  const target: Tab | null = inRead ? 'read' : inInfo && hasInfo.value ? 'info' : null
+  const target = whereInArticle(linkTitle)
   if (!target) {
     showSnackbar('That link isn’t in the article text')
     return
@@ -298,6 +312,10 @@ const placesState = ref<'idle' | 'loading' | 'error'>('idle')
 const selectedPlace = ref<string | null>(null)
 const map = ref<InstanceType<typeof PlacesMap> | null>(null)
 
+const selectedPlaceInfo = computed(
+  () => places.value.find((p) => p.title === selectedPlace.value) ?? null,
+)
+
 async function loadPlaces(): Promise<void> {
   placesState.value = 'loading'
   selectedPlace.value = null
@@ -326,6 +344,8 @@ watch(
   ([t]) => {
     if (t === 'images' && !images.value.length) loadImages()
     if (t === 'places' && !places.value.length) loadPlaces()
+    // Places are linked articles: their cards reuse the Links thumbnails.
+    if (t === 'places') loadLinkThumbs()
     if (t === 'video') loadVideos()
     if (t === 'audio' && audioFor.value !== title.value) loadAudio()
     if (t === 'links') loadLinkThumbs()
@@ -562,15 +582,62 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
             Show all
           </md-text-button>
         </div>
-        <PlacesMap
-          v-if="placesState === 'idle'"
-          ref="map"
-          class="vfa-places__map"
-          :places="places"
-          :selected="selectedPlace"
-          @select="selectedPlace = $event"
-          @open="(t: string) => router.push(articlePath(t))"
-        />
+        <div class="vfa-places__stage">
+          <PlacesMap
+            v-if="placesState === 'idle'"
+            ref="map"
+            class="vfa-places__map"
+            :places="places"
+            :selected="selectedPlace"
+            :callout="false"
+            @select="selectedPlace = $event"
+          />
+          <!-- The selected place: open its article, or find it in this one. -->
+          <Transition name="vfa-place">
+            <md-list
+              v-if="selectedPlaceInfo"
+              :key="selectedPlaceInfo.title"
+              class="vfa-place"
+            >
+              <md-elevation />
+              <md-list-item
+                type="button"
+                @click="router.push(articlePath(selectedPlaceInfo.title))"
+              >
+                <img
+                  v-if="linkThumbs[selectedPlaceInfo.linkTitle]"
+                  slot="start"
+                  class="vfa-links__thumb"
+                  :src="linkThumbs[selectedPlaceInfo.linkTitle]!"
+                  alt=""
+                >
+                <span
+                  v-else
+                  slot="start"
+                  class="vfa-links__thumb vfa-links__thumb--empty"
+                >
+                  <CodexSvg :icon="cdxIconImage" />
+                </span>
+                <span slot="headline">{{ selectedPlaceInfo.title }}</span>
+                <span
+                  v-if="selectedPlaceInfo.description"
+                  slot="supporting-text"
+                >{{
+                  selectedPlaceInfo.description
+                }}</span>
+                <md-icon-button
+                  v-if="whereInArticle(selectedPlaceInfo.linkTitle)"
+                  slot="end"
+                  :aria-label="`Show “${selectedPlaceInfo.title}” in the article`"
+                  :title="'Show in article'"
+                  @click.stop="showInArticle(selectedPlaceInfo.linkTitle)"
+                >
+                  <CodexSvg :icon="cdxIconArticleSearch" />
+                </md-icon-button>
+              </md-list-item>
+            </md-list>
+          </Transition>
+        </div>
       </section>
 
       <!-- Links -->
@@ -610,6 +677,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
             </span>
             <span slot="headline">{{ link.label }}</span>
             <md-icon-button
+              v-if="whereInArticle(link.title)"
               slot="end"
               :aria-label="`Show “${link.label}” in the article`"
               :title="'Show in article'"
@@ -847,8 +915,47 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
   margin: 0;
 }
 
-.vfa-places__map {
+.vfa-places__stage {
+  position: relative;
   flex: 1;
+  min-height: 0;
+}
+
+.vfa-places__map {
+  height: 100%;
+}
+
+/* Selected-place card: floats over the map, just above the article toolbar. */
+.vfa-place {
+  position: absolute;
+  right: 16px;
+  bottom: 80px;
+  left: 16px;
+  padding: 0;
+  border-radius: var(--vfa-shape-large);
+  overflow: hidden;
+  --md-list-container-color: var(--md-sys-color-surface-container-low);
+  --md-elevation-level: 2;
+  --md-list-item-leading-space: 16px;
+  --md-list-item-supporting-text-color: var(--md-sys-color-on-surface-variant);
+}
+
+.vfa-place-enter-active {
+  transition:
+    transform 300ms var(--vfa-ease-emphasized-decelerate),
+    opacity 300ms var(--vfa-ease-emphasized-decelerate);
+}
+
+.vfa-place-leave-active {
+  transition:
+    transform 150ms var(--vfa-ease-emphasized-accelerate),
+    opacity 150ms var(--vfa-ease-emphasized-accelerate);
+}
+
+.vfa-place-enter-from,
+.vfa-place-leave-to {
+  opacity: 0;
+  transform: translateY(16px);
 }
 
 /* Links */
@@ -864,6 +971,20 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
   height: 56px;
   object-fit: cover;
   border-radius: var(--vfa-shape-small);
+}
+
+/*
+ * Compact rows: M3's 40dp leading image makes a one-line item 56dp. A trailing
+ * 48dp icon button needs the top / bottom space trimmed to 4dp to fit that.
+ */
+.vfa-links md-list-item {
+  --md-list-item-top-space: 4px;
+  --md-list-item-bottom-space: 4px;
+}
+
+.vfa-links .vfa-links__thumb {
+  width: 40px;
+  height: 40px;
 }
 
 .vfa-links__thumb--empty {

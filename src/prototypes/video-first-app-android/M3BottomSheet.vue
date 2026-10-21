@@ -154,11 +154,21 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding-bottom: 16px;
+  /* With the list's own 8dp, the last row ends 16dp above the sheet's edge. */
+  padding-bottom: 8px;
 }
 
 .vfa-sheet__body :deep(md-list) {
   --md-list-container-color: transparent;
+}
+
+/*
+ * M3 one-line list items are 56dp. A trailing 48dp icon button plus Material's
+ * default 8dp top / bottom space would make them 64dp, so trim the space to 4dp.
+ */
+.vfa-sheet__body :deep(md-list-item:has(> md-icon-button[slot='end'])) {
+  --md-list-item-top-space: 4px;
+  --md-list-item-bottom-space: 4px;
 }
 
 /* Enter: emphasized decelerate up; exit: emphasized accelerate down. */

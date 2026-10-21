@@ -15,6 +15,8 @@ export interface ArticleImage {
 
 export interface ArticlePlace {
   title: string
+  /** The title as the article links it (before redirects), e.g. to find it in the text. */
+  linkTitle: string
   lat: number
   lon: number
   description?: string
@@ -290,6 +292,8 @@ export function fetchImages(title: string): Promise<ArticleImage[]> {
 export interface ImageDetails {
   /** Screen-sized rendition (960px wide, or the original when smaller). */
   full: string
+  /** English Wikipedia articles that use the file. */
+  articles: string[]
   author: string
   description: string
   timestamp?: string
@@ -304,27 +308,39 @@ export function fetchImageDetails(files: string[]): Promise<Record<string, Image
       const data = await getJson<{
         query?: {
           normalized?: { from: string; to: string }[]
-          pages: { title: string; imageinfo?: (MediaInfo & { thumburl?: string })[] }[]
+          pages: {
+            title: string
+            imageinfo?: (MediaInfo & { thumburl?: string })[]
+            globalusage?: Usage[]
+          }[]
         }
       }>(
         actionUrl(COMMONS, {
           action: 'query',
           titles: batch.join('|'),
-          prop: 'imageinfo',
+          prop: 'imageinfo|globalusage',
           iiprop: 'url|extmetadata|timestamp',
           iiurlwidth: '960',
           iiextmetadatafilter: 'ImageDescription|Artist',
+          ...USAGE_PARAMS,
         }),
         'video-first-app-commons',
       )
       const normalized = new Map((data.query?.normalized ?? []).map((n) => [n.from, n.to]))
       batch.forEach((file) => {
         const name = normalized.get(file) ?? file
-        const info = data.query?.pages.find((p) => p.title === name)?.imageinfo?.[0]
+        const page = data.query?.pages.find((p) => p.title === name)
+        const info = page?.imageinfo?.[0]
         const full = info?.thumburl ?? info?.url
         if (!info || !full) return
         const { author, description } = credit(info)
-        details[file] = { full, author, description, timestamp: info.timestamp }
+        details[file] = {
+          full,
+          articles: usageTitles(page?.globalusage),
+          author,
+          description,
+          timestamp: info.timestamp,
+        }
       })
     }
     return details
@@ -340,6 +356,8 @@ export function fetchPlaces(title: string): Promise<ArticlePlace[]> {
     for (let i = 0; i < list.length; i += 50) {
       const data = await getJson<{
         query?: {
+          normalized?: { from: string; to: string }[]
+          redirects?: { from: string; to: string }[]
           pages: {
             title: string
             description?: string
@@ -356,11 +374,20 @@ export function fetchPlaces(title: string): Promise<ArticlePlace[]> {
         }),
         'video-first-app-places',
       )
+      // Page title → the first link in this batch that leads to it.
+      const linkedAs = new Map<string, string>()
+      list.slice(i, i + 50).forEach((link) => {
+        let to = link
+        to = data.query?.normalized?.find((n) => n.from === to)?.to ?? to
+        to = data.query?.redirects?.find((r) => r.from === to)?.to ?? to
+        if (!linkedAs.has(to)) linkedAs.set(to, link)
+      })
       data.query?.pages.forEach((page) => {
         const coord = page.coordinates?.[0]
         if (coord && !places.some((p) => p.title === page.title)) {
           places.push({
             title: page.title,
+            linkTitle: linkedAs.get(page.title) ?? page.title,
             lat: coord.lat,
             lon: coord.lon,
             description: page.description,
@@ -371,8 +398,8 @@ export function fetchPlaces(title: string): Promise<ArticlePlace[]> {
     // Article order: the first place mentioned comes first.
     const order = (t: string) => list.findIndex((l) => l === t)
     return places.sort((a, b) => {
-      const ia = order(a.title)
-      const ib = order(b.title)
+      const ia = order(a.linkTitle)
+      const ib = order(b.linkTitle)
       return (ia === -1 ? Infinity : ia) - (ib === -1 ? Infinity : ib)
     })
   })
@@ -431,6 +458,8 @@ export interface ArticleVideo {
   caption: string
   /** Upload time (ISO). */
   timestamp?: string
+  /** English Wikipedia articles that use the file. */
+  articles: string[]
 }
 
 export interface ArticleAudio {
@@ -458,6 +487,17 @@ function clip(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text
 }
 
+/** Where a Commons file is used: articles on English Wikipedia only (no user, talk or other pages). */
+type Usage = { title: string }
+
+const USAGE_PARAMS = { gusite: 'enwiki', gunamespace: '0', gulimit: '500' }
+
+function usageTitles(usage: Usage[] | undefined): string[] {
+  return (usage ?? [])
+    .map((u) => u.title.replace(/_/g, ' '))
+    .filter((t, i, all) => all.indexOf(t) === i)
+}
+
 type MediaInfo = {
   url?: string
   thumburl?: string
@@ -476,7 +516,7 @@ type MediaInfo = {
 async function articleMedia(
   title: string,
   kind: 'video' | 'audio',
-): Promise<{ file: string; info: MediaInfo }[]> {
+): Promise<{ file: string; info: MediaInfo; articles: string[] }[]> {
   const [mediaList, search] = await Promise.all([
     getJson<{ items: { type: string; title: string }[] }>(
       `${WIKI}/api/rest_v1/page/media-list/${restTitle(title)}`,
@@ -504,23 +544,27 @@ async function articleMedia(
   const data = await getJson<{
     query?: {
       normalized?: { from: string; to: string }[]
-      pages: { title: string; videoinfo?: MediaInfo[] }[]
+      pages: { title: string; videoinfo?: MediaInfo[]; globalusage?: Usage[] }[]
     }
   }>(
     actionUrl(COMMONS, {
       action: 'query',
       titles: files.join('|'),
-      prop: 'videoinfo',
+      prop: 'videoinfo|globalusage',
       viprop: 'url|size|mime|derivatives|extmetadata|timestamp',
       viurlwidth: '720',
       viextmetadatafilter: 'ImageDescription|Artist',
+      ...USAGE_PARAMS,
     }),
     `video-first-app-commons-${kind}`,
   )
   const pages = data.query?.pages ?? []
   return files
-    .map((file) => ({ file, info: pages.find((p) => p.title === file)?.videoinfo?.[0] }))
-    .filter((m): m is { file: string; info: MediaInfo } => Boolean(m.info))
+    .map((file) => {
+      const page = pages.find((p) => p.title === file)
+      return { file, info: page?.videoinfo?.[0], articles: usageTitles(page?.globalusage) }
+    })
+    .filter((m): m is { file: string; info: MediaInfo; articles: string[] } => Boolean(m.info))
 }
 
 function credit(info: MediaInfo): { author: string; description: string } {
@@ -536,7 +580,7 @@ export function fetchArticleVideos(title: string): Promise<ArticleVideo[]> {
   return memo(`videos:${title}`, async () => {
     const media = await articleMedia(title, 'video')
     const videos: ArticleVideo[] = []
-    media.forEach(({ file, info }) => {
+    media.forEach(({ file, info, articles }) => {
       const webm = (info.derivatives ?? [])
         .filter((d) => d.type.startsWith('video/webm') && (d.height ?? 0) <= 720)
         .sort((a, b) => (b.height ?? 0) - (a.height ?? 0))[0]
@@ -552,6 +596,7 @@ export function fetchArticleVideos(title: string): Promise<ArticleVideo[]> {
         author,
         caption: clip(description || fileCaption(file), 160),
         timestamp: info.timestamp,
+        articles,
       })
     })
     return videos.slice(0, 6)

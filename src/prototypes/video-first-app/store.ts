@@ -64,6 +64,14 @@ function score(post: Post): number {
 
 // — Loading real videos —
 
+/**
+ * A post's articles: the one it was found from first (the headline), then
+ * every other English Wikipedia article that uses the file.
+ */
+function withUsage(title: string, usage: string[]): string[] {
+  return [title, ...usage.filter((t) => !sameTitle(t, title))]
+}
+
 /** Feed posts connected to an article (its Video tab), in the order they arrived. */
 export function articleVideoPosts(title: string): Post[] {
   return state.posts.filter(
@@ -83,9 +91,13 @@ export async function loadArticleImages(title: string): Promise<Post[]> {
   return images.map((image) => {
     const name = image.file.replace(/_/g, ' ').replace(/^File:/, '')
     const id = `image:${name}`
-    const existing = postById(id)
-    if (existing) return existing
     const info = details[image.file]
+    const articles = withUsage(title, info?.articles ?? [])
+    const existing = postById(id)
+    if (existing) {
+      articles.forEach((t) => connectArticle(existing, t))
+      return existing
+    }
     const post: Post = {
       id,
       kind: 'photo',
@@ -95,7 +107,7 @@ export async function loadArticleImages(title: string): Promise<Post[]> {
       thumb: image.thumb,
       credit: `${name}, Wikimedia Commons`,
       duration: 8,
-      articles: [title],
+      articles,
       likes: 0,
       comments: [],
       ago: formatAgo(info?.timestamp),
@@ -115,7 +127,7 @@ export async function loadArticleVideos(title: string): Promise<Post[]> {
     state.rank[id] = Math.min(state.rank[id] ?? i, i)
     const existing = postById(id)
     if (existing) {
-      connectArticle(existing, title)
+      withUsage(title, v.articles).forEach((t) => connectArticle(existing, t))
       return existing
     }
     const post: Post = {
@@ -128,7 +140,7 @@ export async function loadArticleVideos(title: string): Promise<Post[]> {
       thumb: v.poster,
       credit: `${v.file.replace(/^File:/, '')}, Wikimedia Commons`,
       duration: v.duration,
-      articles: [title],
+      articles: withUsage(title, v.articles),
       likes: 0,
       comments: [],
       ago: formatAgo(v.timestamp),

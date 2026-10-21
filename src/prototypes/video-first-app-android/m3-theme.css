@@ -6,6 +6,8 @@
  * The mapping is declared on the prototype root AND on every `[data-theme]`
  * island inside it: custom properties resolve where they're declared, so a
  * dark feed inside a light app has to re-resolve them against dark tokens.
+ * Values that must NOT change with the theme (brand blue, on-media white, the
+ * scrim) are captured once on the light root instead.
  */
 
 .vfa,
@@ -52,8 +54,9 @@
   --md-sys-color-inverse-on-surface: var(--color-inverted);
   --md-sys-color-inverse-primary: var(--border-color-progressive);
 
-  --md-sys-color-scrim: var(--background-color-backdrop-dark);
-  --md-sys-color-shadow: var(--background-color-backdrop-dark);
+  /* Captured on the light root (see below): Codex's dark theme flips backdrop-dark to white. */
+  --md-sys-color-scrim: var(--vfa-scrim);
+  --md-sys-color-shadow: var(--vfa-scrim);
 
   /* Type — Roboto, Android's system face */
   --md-ref-typeface-brand: 'Roboto', var(--font-family-sans);
@@ -76,6 +79,12 @@
   --vfa-on-brand-blue: var(--color-inverted-fixed);
   /* Text and icons laid over video: always white, for legibility on any frame. */
   --vfa-on-media: var(--color-inverted-fixed);
+  /*
+   * Scrims (over video, behind sheets) stay dark in every theme. Codex's dark
+   * theme turns --background-color-backdrop-dark white, so resolve it here, in
+   * the light root, and let dark islands inherit the value.
+   */
+  --vfa-scrim: var(--background-color-backdrop-dark);
 }
 
 /* Accent containers (nav indicator, toolbar selection, filled buttons) use the brand blue. */

@@ -7,7 +7,15 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import type { ArticlePlace } from './wikiApi'
 
-const props = defineProps<{ places: ArticlePlace[]; selected: string | null }>()
+const props = withDefaults(
+  defineProps<{
+    places: ArticlePlace[]
+    selected: string | null
+    /** Label the selected pin with a link to its article (off when the page shows its own card). */
+    callout?: boolean
+  }>(),
+  { callout: true },
+)
 const emit = defineEmits<{ select: [title: string | null]; open: [title: string] }>()
 
 const TILE = 256
@@ -203,7 +211,7 @@ defineExpose({ fit })
       @click="emit('select', pin.place.title)"
     />
     <a
-      v-if="selectedPin"
+      v-if="selectedPin && props.callout"
       href="#"
       class="vf-map__callout"
       :style="{ transform: `translate(${selectedPin.x}px, ${selectedPin.y}px)` }"
