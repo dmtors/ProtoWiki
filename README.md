@@ -3,10 +3,10 @@
 
 # ProtoWiki
 
-This repo is an experimental collection of resources for prototyping within the Wiki ecosystem. It contains two things:
+ProtoWiki contains two things:
 
 1. [A big list](#resources) of links to many resources and tools that you can use.
-2. [A prototyping system](#prototyping-system) itself for making minimal prototypes.
+2. [A prototyping system](#prototyping-system) for making minimal prototypes.
 
 We'd love to hear from you. Have some feedback? Have a suggestion? Found a bug?\
 In all cases, please feel free to [let us know](https://github.com/wikimedia/ProtoWiki/issues/new).
@@ -61,7 +61,7 @@ There are also many skills within the repo that agents can use to navigate all o
 
 ### Getting started
 
-To run ProtoWiki locally, click "Use as template" on this repo, then clone your copy.
+To run ProtoWiki locally, click "Use this template" on this repo, then clone your copy.
 
 Then install dependencies and run the dev server:
 
@@ -218,6 +218,26 @@ To craft a static hand-written article page, use the `ArticleCustom` component.
 
 There are other components that you can use within the prototyping system. Explore the `components` folder to discover them all.
 
-### App prototyping
+## Contributing
 
-TODO
+> [!TIP]
+> Either follow these instructions yourself, or ask an AI agent to follow them for you.
+
+### Setting up
+
+To begin contributing to ProtoWiki, first create a fork of the repo by clicking the **Fork** button near the top right of the page. You'll use this fork to do all of your contributions.
+
+When you've done that, clone your fork locally.
+
+### Making a contribution
+
+In your local fork, create a new branch for your contribution. You can name the branch whatever you want.\
+Make any changes you want in your branch. Then push up your changes to your fork.
+
+When you've done that, go to the [ProtoWiki repo page](https://github.com/wikimedia/protowiki).\
+Click on **[Pull requests](https://github.com/wikimedia/ProtoWiki/pulls)**.\
+Then click on **[New pull request](https://github.com/wikimedia/ProtoWiki/compare)**.
+
+In the **compare** dropdown, pick your branch from your fork.\
+Then click **Create pull request**.
+Fill in some details and submit!

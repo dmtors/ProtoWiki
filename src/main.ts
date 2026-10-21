@@ -12,6 +12,7 @@ import './styles/wiki-skins/mobile-wiki-overrides.css'
 import './styles/dark.css'
 
 import { bootAppearance, mergedLocationQuery, wireAppearanceRouter } from '@/appearance'
+import { loadCodexBuildInfoForDev } from '@/codex-build'
 
 /** Path under `import.meta.env.BASE_URL` (e.g. `/template-chrome`). */
 function githubPagesSubpathAfterBase(baseUrl: string): string | null {
@@ -42,18 +43,26 @@ function syncGithubPagesPreviewRoute(router: ReturnType<typeof createRouter>): v
   })
 }
 
-bootAppearance()
+async function bootstrap(): Promise<void> {
+  if (import.meta.env.DEV) {
+    await loadCodexBuildInfoForDev()
+  }
 
-const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
-  routes,
-})
+  bootAppearance()
 
-wireAppearanceRouter(router)
-syncGithubPagesPreviewRoute(router)
+  const router = createRouter({
+    history: createWebHistory(import.meta.env.BASE_URL),
+    routes,
+  })
 
-if (import.meta.hot) {
-  handleHotUpdate(router)
+  wireAppearanceRouter(router)
+  syncGithubPagesPreviewRoute(router)
+
+  if (import.meta.hot) {
+    handleHotUpdate(router)
+  }
+
+  createApp(App).use(router).mount('#app')
 }
 
-createApp(App).use(router).mount('#app')
+void bootstrap()

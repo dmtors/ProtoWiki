@@ -4,6 +4,7 @@ import lightTokensRaw from '@wikimedia/codex-design-tokens/theme-wikimedia-ui.cs
 import darkTokensRaw from '@wikimedia/codex-design-tokens/theme-wikimedia-ui-mode-dark.css?raw'
 
 import { protowikiConfig } from '@/appearance'
+import { getCodexPatchChangeId } from '@/codex-build'
 import type { ConfigTheme, ConfigWebSkin } from '@/config'
 
 export type Skin = 'desktop' | 'mobile'
@@ -225,10 +226,23 @@ export function applyThemePreference(preference: ConfigTheme): void {
  *
  * Call this once, before mounting the app.
  */
+/** Sync `html[data-codex-patched]` from installed Codex (including dev toggles). */
+export function syncCodexPatchHtmlAttribute(): void {
+  if (typeof document === 'undefined') return
+  const codexPatchChangeId = getCodexPatchChangeId()
+  if (codexPatchChangeId) {
+    document.documentElement.setAttribute('data-codex-patched', codexPatchChangeId)
+  } else {
+    document.documentElement.removeAttribute('data-codex-patched')
+  }
+}
+
 export function initTheming(): void {
   if (typeof window === 'undefined') return
 
   injectThemedTokens()
+
+  syncCodexPatchHtmlAttribute()
 
   const config = protowikiConfig.value
   applyWebSkinPreference(config.webSkin)
