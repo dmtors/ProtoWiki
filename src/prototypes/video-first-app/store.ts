@@ -6,7 +6,13 @@
 import { computed, reactive } from 'vue'
 
 import { SEED_ARTICLES, formatAgo, sameTitle, type Post, type PostKind } from './data'
-import { fetchArticle, fetchArticleVideos } from './wikiApi'
+import {
+  fetchArticle,
+  fetchArticleVideos,
+  fetchImageDetails,
+  fetchImages,
+  type ImageDetails,
+} from './wikiApi'
 
 interface HistoryItem {
   title: string
@@ -58,6 +64,48 @@ function score(post: Post): number {
 
 // — Loading real videos —
 
+/** Feed posts connected to an article (its Video tab), in the order they arrived. */
+export function articleVideoPosts(title: string): Post[] {
+  return state.posts.filter(
+    (p) => !state.hidden[p.id] && !p.viewerOnly && p.articles.some((a) => sameTitle(a, title)),
+  )
+}
+
+/**
+ * An article's images as viewer-only photo posts (likes, comments and the rest
+ * work as on videos; they never enter the feed). Order follows the Images tab.
+ */
+export async function loadArticleImages(title: string): Promise<Post[]> {
+  const images = await fetchImages(title)
+  const details = await fetchImageDetails(images.map((i) => i.file)).catch(
+    () => ({}) as Record<string, ImageDetails>,
+  )
+  return images.map((image) => {
+    const name = image.file.replace(/_/g, ' ').replace(/^File:/, '')
+    const id = `image:${name}`
+    const existing = postById(id)
+    if (existing) return existing
+    const info = details[image.file]
+    const post: Post = {
+      id,
+      kind: 'photo',
+      author: info?.author ?? 'Wikimedia Commons',
+      caption: image.caption || info?.description || '',
+      media: info?.full ?? image.thumb,
+      thumb: image.thumb,
+      credit: `${name}, Wikimedia Commons`,
+      duration: 8,
+      articles: [title],
+      likes: 0,
+      comments: [],
+      ago: formatAgo(info?.timestamp),
+      viewerOnly: true,
+    }
+    state.posts.push(post)
+    return post
+  })
+}
+
 /** Add an article's Commons videos as posts (merging files already in the feed). */
 export async function loadArticleVideos(title: string): Promise<Post[]> {
   const videos = await fetchArticleVideos(title).catch(() => [])
@@ -92,7 +140,7 @@ export async function loadArticleVideos(title: string): Promise<Post[]> {
 
 function unseen(): Post[] {
   const seen = new Set(state.feedOrder)
-  return state.posts.filter((p) => !seen.has(p.id) && !state.hidden[p.id])
+  return state.posts.filter((p) => !seen.has(p.id) && !state.hidden[p.id] && !p.viewerOnly)
 }
 
 /**
@@ -100,12 +148,23 @@ function unseen(): Post[] {
  * seed articles, then articles linked from your history (so the feed keeps
  * finding related topics).
  */
+/** Queue the first post once there's anything to show. */
+function startFeed(): void {
+  const first = state.feedOrder.length ? '' : pickNext()
+  if (first) state.feedOrder.push(first)
+}
+
 export async function ensureFeed(minimum = 3): Promise<void> {
-  if (state.feedLoading || unseen().length >= minimum) return
+  if (state.feedLoading) return
+  // Enough already loaded (e.g. an article opened first queued its videos).
+  if (unseen().length >= minimum) {
+    startFeed()
+    return
+  }
   state.feedLoading = true
   try {
     // First run: load every seed article at once so the feed opens varied.
-    if (!state.posts.length && !state.history.length) {
+    if (!state.posts.some((p) => !p.viewerOnly) && !state.history.length) {
       await Promise.all(SEED_ARTICLES.map((title) => loadArticleVideos(title)))
     }
     const candidates = [...state.history.map((h) => h.title), ...SEED_ARTICLES]
@@ -123,7 +182,7 @@ export async function ensureFeed(minimum = 3): Promise<void> {
         if (!state.loadedArticles[key(link.title)]) await loadArticleVideos(link.title)
       }
     }
-    if (!state.feedOrder.length && state.posts.length) state.feedOrder.push(pickNext())
+    startFeed()
   } finally {
     state.feedLoading = false
   }
@@ -138,7 +197,9 @@ function pickNext(): string {
       (a, b) => score(b) - score(a) || (state.rank[a.id] ?? 0) - (state.rank[b.id] ?? 0),
     )[0].id
   }
-  const visible = state.posts.filter((p) => !state.hidden[p.id] && p.id !== currentPost.value?.id)
+  const visible = state.posts.filter(
+    (p) => !state.hidden[p.id] && !p.viewerOnly && p.id !== currentPost.value?.id,
+  )
   const lastSeen = (id: string) => state.feedOrder.lastIndexOf(id)
   return [...visible].sort((a, b) => lastSeen(a.id) - lastSeen(b.id))[0]?.id ?? ''
 }

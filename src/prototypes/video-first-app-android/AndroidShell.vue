@@ -33,8 +33,10 @@ const props = withDefaults(
     theme?: Theme
     /** Article to pre-connect when the create button is used on this screen. */
     createArticle?: string
+    /** Lay the header over the content, which scrolls up and fades out behind it. */
+    overlayHeader?: boolean
   }>(),
-  { theme: undefined, createArticle: undefined },
+  { theme: undefined, createArticle: undefined, overlayHeader: false },
 )
 
 const route = useRoute()
@@ -55,7 +57,8 @@ const activePath = computed(() => {
   const path = route.path.replace(/\/$/, '')
   return (
     DESTINATIONS.find((d) => d.path === path)?.path ??
-    (path.startsWith(`${BASE}/article`) ? '' : BASE)
+    // Articles and their image / video viewers sit outside the destinations.
+    (['article', 'images', 'videos'].some((p) => path.startsWith(`${BASE}/${p}`)) ? '' : BASE)
   )
 })
 
@@ -74,7 +77,10 @@ function go(path: string): void {
   >
     <!-- Always render our own header element so the app chrome never falls back to its default bar. -->
     <template #header>
-      <div class="vfa-header">
+      <div
+        class="vfa-header"
+        :class="{ 'vfa-header--overlay': props.overlayHeader }"
+      >
         <slot name="header" />
       </div>
     </template>
@@ -167,6 +173,35 @@ function go(path: string): void {
   background-color: var(--md-sys-color-surface);
 }
 
+/*
+ * Overlay header: out of the layout, over the scrolling content. Solid
+ * surface colour behind the title and icons (which end ~54px down), then an
+ * eased fade from 56px to 20px below the bar, so content dissolves smoothly
+ * with no visible edge. Only the controls take taps.
+ */
+.vfa-header--overlay {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 4;
+  padding-bottom: 20px;
+  background: linear-gradient(
+    to bottom,
+    var(--md-sys-color-surface) 56px,
+    color-mix(in srgb, var(--md-sys-color-surface) 94%, transparent) 61px,
+    color-mix(in srgb, var(--md-sys-color-surface) 82%, transparent) 66px,
+    color-mix(in srgb, var(--md-sys-color-surface) 64%, transparent) 71px,
+    color-mix(in srgb, var(--md-sys-color-surface) 44%, transparent) 76px,
+    color-mix(in srgb, var(--md-sys-color-surface) 26%, transparent) 81px,
+    color-mix(in srgb, var(--md-sys-color-surface) 11%, transparent) 86px,
+    transparent 92px
+  );
+  pointer-events: none;
+}
+
+.vfa-header--overlay :deep(:is(button, a, md-icon-button)) {
+  pointer-events: auto;
+}
+
 .vfa-dock {
   position: relative;
   flex-shrink: 0;
@@ -246,9 +281,9 @@ function go(path: string): void {
 
 .vfa-snackbar {
   position: absolute;
-  right: 16px;
+  right: var(--vfa-gutter);
   bottom: calc(100% + 16px);
-  left: 16px;
+  left: var(--vfa-gutter);
   z-index: 6;
   display: flex;
   align-items: center;
@@ -264,7 +299,7 @@ function go(path: string): void {
 }
 
 .vfa-snackbar--raised {
-  bottom: calc(100% + 16px + 64px + 16px);
+  bottom: calc(100% + 16px + 56px + 16px);
 }
 
 .vfa-snackbar__action {

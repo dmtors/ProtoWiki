@@ -1,12 +1,12 @@
 <script setup lang="ts">
 /**
- * A Codex icon as a bare 24dp SVG, for Material Web slots (`md-icon-button`,
+ * A Codex icon as a bare SVG (20px by default, Codex's native size), for Material Web slots (`md-icon-button`,
  * `md-fab`, list items) that expect an icon element rather than a Codex `CdxIcon`.
  */
 import { computed } from 'vue'
 import { resolveIcon, type Icon } from '@wikimedia/codex-icons'
 
-const props = withDefaults(defineProps<{ icon: Icon; size?: number }>(), { size: 24 })
+const props = withDefaults(defineProps<{ icon: Icon; size?: number }>(), { size: 20 })
 
 const markup = computed(() => {
   const simple = resolveIcon(props.icon, 'en', 'ltr')

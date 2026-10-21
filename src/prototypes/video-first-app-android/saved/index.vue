@@ -111,8 +111,9 @@ function openPost(id: string): void {
 .vfa-appbar {
   display: flex;
   align-items: center;
-  height: 64px;
-  padding: 0 16px;
+  box-sizing: border-box;
+  height: var(--vfa-top-bar);
+  padding: var(--vfa-top-inset) var(--vfa-gutter) 0;
 }
 
 .vfa-appbar h1 {
@@ -121,7 +122,7 @@ function openPost(id: string): void {
 
 .vfa-label {
   margin: 0;
-  padding: 16px 16px 8px;
+  padding: 16px var(--vfa-gutter) 8px;
   color: var(--md-sys-color-on-surface-variant);
 }
 
@@ -131,7 +132,7 @@ function openPost(id: string): void {
 
 .vfa-empty {
   margin: 0;
-  padding: 0 16px 8px;
+  padding: 0 var(--vfa-gutter) 8px;
   color: var(--md-sys-color-on-surface-variant);
 }
 
@@ -139,7 +140,7 @@ function openPost(id: string): void {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 4px;
-  padding: 0 16px 96px;
+  padding: 0 var(--vfa-gutter) 96px;
 }
 
 .vfa-tile {

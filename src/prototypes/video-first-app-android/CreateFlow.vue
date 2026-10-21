@@ -319,7 +319,7 @@ onBeforeUnmount(() => clearInterval(timer))
   align-items: center;
   gap: 4px;
   height: 64px;
-  padding: 0 16px 0 4px;
+  padding: 0 var(--vfa-gutter) 0 var(--vfa-icon-edge);
 }
 
 .vfa-fullscreen__title {
@@ -335,7 +335,7 @@ onBeforeUnmount(() => clearInterval(timer))
   align-items: center;
   justify-content: center;
   gap: 24px;
-  padding: 16px;
+  padding: var(--vfa-gutter);
   background-color: var(--md-sys-color-surface);
   color: var(--md-sys-color-on-surface-variant);
 }
@@ -361,7 +361,7 @@ onBeforeUnmount(() => clearInterval(timer))
   flex: 1;
   flex-direction: column;
   gap: 16px;
-  padding: 8px 16px 24px;
+  padding: 8px var(--vfa-gutter) 24px;
   overflow-y: auto;
 }
 

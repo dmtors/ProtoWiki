@@ -7,7 +7,7 @@ definePage({
 
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { cdxIconArrowPrevious, cdxIconArticle, cdxIconClose } from '@wikimedia/codex-icons'
+import { cdxIconArrowPrevious, cdxIconClose, cdxIconImage } from '@wikimedia/codex-icons'
 
 import AndroidShell from '../AndroidShell.vue'
 import CodexSvg from '../CodexSvg.vue'
@@ -78,7 +78,6 @@ onMounted(() => field.value?.focus())
           <CodexSvg :icon="cdxIconClose" />
         </md-icon-button>
       </div>
-      <md-divider />
     </template>
 
     <md-list
@@ -103,7 +102,7 @@ onMounted(() => field.value?.focus())
           slot="start"
           class="vfa-results__thumb vfa-results__thumb--empty"
         >
-          <CodexSvg :icon="cdxIconArticle" />
+          <CodexSvg :icon="cdxIconImage" />
         </span>
         <span slot="headline">{{ r.title }}</span>
         <span
@@ -126,10 +125,6 @@ onMounted(() => field.value?.focus())
         type="button"
         @click="router.push(articlePath(h.title))"
       >
-        <CodexSvg
-          slot="start"
-          :icon="cdxIconArticle"
-        />
         <span slot="headline">{{ h.title }}</span>
       </md-list-item>
     </md-list>
@@ -141,8 +136,9 @@ onMounted(() => field.value?.focus())
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 72px;
-  padding: 0 4px;
+  box-sizing: border-box;
+  height: var(--vfa-top-bar);
+  padding: var(--vfa-top-inset) var(--vfa-icon-edge) 0;
 }
 
 .vfa-search__input {
@@ -167,11 +163,13 @@ onMounted(() => field.value?.focus())
 }
 
 .vfa-results {
+  /* First row starts 16px below the bar, like every other screen. */
+  padding-top: 16px;
   --md-list-container-color: transparent;
 }
 
 .vfa-results__label {
-  padding: 16px 16px 8px;
+  padding: 0 var(--vfa-gutter) 8px;
   color: var(--md-sys-color-on-surface-variant);
 }
 

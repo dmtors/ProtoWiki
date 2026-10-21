@@ -99,8 +99,9 @@ const interests = computed(() =>
 .vfa-appbar {
   display: flex;
   align-items: center;
-  height: 64px;
-  padding: 0 16px;
+  box-sizing: border-box;
+  height: var(--vfa-top-bar);
+  padding: var(--vfa-top-inset) var(--vfa-gutter) 0;
 }
 
 .vfa-appbar h1 {
@@ -109,13 +110,14 @@ const interests = computed(() =>
 
 .vfa-intro {
   margin: 0;
-  padding: 0 16px 8px;
+  /* Same 16px below the bar as every other screen's first content. */
+  padding: 16px var(--vfa-gutter) 8px;
   color: var(--md-sys-color-on-surface-variant);
 }
 
 .vfa-label {
   margin: 0;
-  padding: 16px 16px 8px;
+  padding: 16px var(--vfa-gutter) 8px;
   color: var(--md-sys-color-on-surface-variant);
 }
 
@@ -125,7 +127,7 @@ const interests = computed(() =>
 
 .vfa-empty {
   margin: 0;
-  padding: 0 16px;
+  padding: 0 var(--vfa-gutter);
   color: var(--md-sys-color-on-surface-variant);
 }
 </style>

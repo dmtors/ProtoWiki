@@ -160,7 +160,7 @@ function send(): void {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 8px 4px 24px;
+  padding: 12px var(--vfa-icon-edge) 4px var(--vfa-gutter);
 }
 
 .vfa-comments__title {
@@ -171,7 +171,7 @@ function send(): void {
   flex: 1;
   min-height: 0;
   margin: 0;
-  padding: 0 8px 0 16px;
+  padding: 0 var(--vfa-icon-edge) 0 var(--vfa-gutter);
   overflow-y: auto;
   list-style: none;
 }
@@ -231,7 +231,7 @@ function send(): void {
 }
 
 .vfa-comments__form {
-  padding: 8px 16px 16px;
+  padding: 8px var(--vfa-gutter) 16px;
 }
 
 .vfa-comments__field {

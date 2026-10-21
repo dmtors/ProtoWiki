@@ -142,7 +142,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 0 12px 8px 24px;
+  padding: 0 var(--vfa-icon-edge) 8px var(--vfa-gutter);
 }
 
 .vfa-sheet__title {

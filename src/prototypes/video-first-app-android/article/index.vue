@@ -5,14 +5,14 @@ definePage({
   },
 })
 
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   cdxIconArrowPrevious,
+  cdxIconArticleSearch,
   cdxIconArticle,
   cdxIconBookmark,
   cdxIconBookmarkOutline,
-  cdxIconEdit,
   cdxIconImage,
   cdxIconLink,
   cdxIconMapPin,
@@ -30,14 +30,13 @@ import { BASE, articlePath } from '../routes'
 import { showSnackbar } from '../snackbar'
 import { saveArticle } from '../useSaveArticle'
 import PlacesMap from '../../video-first-app/PlacesMap.vue'
-import { formatAgo, sameTitle, type AudioRecording } from '../../video-first-app/data'
+import { formatAgo, type AudioRecording } from '../../video-first-app/data'
 import {
-  focusPost,
+  articleVideoPosts,
   isArticleSaved,
   loadArticleVideos,
   openCreate,
   recordRead,
-  state,
 } from '../../video-first-app/store'
 import {
   fetchArticle,
@@ -89,12 +88,19 @@ async function loadArticle(): Promise<void> {
 
 const headerTitle = computed(() => article.value?.title ?? title.value)
 
-/** Explicit `?tab=` wins; otherwise Info when there's an infobox, else Read. */
+/** Whether the article has an infobox (null while it loads). */
+const hasInfo = computed<boolean | null>(() =>
+  article.value ? Boolean(article.value.info.length || article.value.infoImage) : null,
+)
+
+/** Info only appears in the toolbar for articles with an infobox (kept while loading). */
+const visibleTabs = computed(() => TABS.filter((t) => t.id !== 'info' || hasInfo.value !== false))
+
+/** Explicit `?tab=` wins (unless it's Info and there's none); otherwise Info when there's an infobox, else Read. */
 const tab = computed<Tab>(() => {
   const value = route.query.tab
-  if (TABS.some((t) => t.id === value)) return value as Tab
-  if (!article.value) return 'info'
-  return article.value.info.length || article.value.infoImage ? 'info' : 'read'
+  if (visibleTabs.value.some((t) => t.id === value)) return value as Tab
+  return hasInfo.value === false ? 'read' : 'info'
 })
 
 /** Two-way binding for the floating toolbar; writing it records the tab in the URL. */
@@ -103,6 +109,68 @@ const selectedTab = computed({
   set: (next: string) => {
     if (next !== tab.value) router.replace({ query: { ...route.query, tab: next } })
   },
+})
+
+/*
+ * Swiping left / right steps through the toolbar's tabs (Android's tab swipe).
+ * Vertical scrolling stays native (`touch-action: pan-y`); a drag counts once
+ * it's mostly horizontal and long enough. The map and anything that scrolls
+ * sideways (wide tables) keep their own horizontal drags.
+ */
+const SWIPE_DISTANCE = 56
+const swipeDirection = ref<'next' | 'previous'>('next')
+let swipeStart: { x: number; y: number; id: number } | null = null
+let suppressClick = false
+
+function scrollsSideways(target: EventTarget | null): boolean {
+  for (
+    let el = target as HTMLElement | null;
+    el && !el.classList?.contains('vfa-article');
+    el = el.parentElement
+  ) {
+    if (el.classList?.contains('vfa-places__map')) return true
+    const overflow = getComputedStyle(el).overflowX
+    if ((overflow === 'auto' || overflow === 'scroll') && el.scrollWidth > el.clientWidth)
+      return true
+  }
+  return false
+}
+
+function onSwipeStart(e: PointerEvent): void {
+  if (!e.isPrimary || e.button !== 0 || scrollsSideways(e.target)) return
+  swipeStart = { x: e.clientX, y: e.clientY, id: e.pointerId }
+}
+
+function onSwipeEnd(e: PointerEvent): void {
+  if (!swipeStart || e.pointerId !== swipeStart.id) return
+  const dx = e.clientX - swipeStart.x
+  const dy = e.clientY - swipeStart.y
+  swipeStart = null
+  if (Math.abs(dx) < SWIPE_DISTANCE || Math.abs(dx) < Math.abs(dy) * 1.5) return
+  const tabs = visibleTabs.value
+  const index = tabs.findIndex((t) => t.id === tab.value)
+  const next = tabs[index + (dx < 0 ? 1 : -1)]
+  if (!next) return
+  // A mouse drag ends in a click; don't let it open a link.
+  suppressClick = true
+  setTimeout(() => (suppressClick = false), 0)
+  selectedTab.value = next.id
+}
+
+function onSwipeCancel(): void {
+  swipeStart = null
+}
+
+function onSwipeClick(e: MouseEvent): void {
+  if (!suppressClick) return
+  e.preventDefault()
+  e.stopPropagation()
+}
+
+/** Toolbar taps slide in from the side of the tab they move toward, like a swipe would. */
+watch(tab, (next, previous) => {
+  const ids = visibleTabs.value.map((t) => t.id)
+  swipeDirection.value = ids.indexOf(next) >= ids.indexOf(previous) ? 'next' : 'previous'
 })
 
 function goBack(): void {
@@ -124,11 +192,7 @@ function onTextClick(e: MouseEvent): void {
 
 // — Videos and audio (real Commons media) —
 
-const videoPosts = computed(() =>
-  state.posts.filter(
-    (p) => !state.hidden[p.id] && p.articles.some((a) => sameTitle(a, title.value)),
-  ),
-)
+const videoPosts = computed(() => articleVideoPosts(title.value))
 const videosLoading = ref(false)
 
 async function loadVideos(): Promise<void> {
@@ -137,9 +201,9 @@ async function loadVideos(): Promise<void> {
   videosLoading.value = false
 }
 
+/** Open a video full-screen among the article's other videos, with a way back. */
 function openPost(id: string): void {
-  focusPost(id)
-  router.push(BASE)
+  router.push({ path: `${BASE}/videos`, query: { title: title.value, post: id } })
 }
 
 const recordings = ref<AudioRecording[]>([])
@@ -175,11 +239,47 @@ async function loadLinkThumbs(): Promise<void> {
   linkThumbs.value = { ...linkThumbs.value, ...(await fetchPageThumbs(titles)) }
 }
 
+// — Show a link in context —
+//
+// From the Links tab: jump to where the link first appears (the Read text, or
+// the infobox if that's the only place), scroll it into view and flash it.
+
+async function showInArticle(linkTitle: string): Promise<void> {
+  const selector = `[data-title="${CSS.escape(linkTitle)}"]`
+  // Rendered text stores titles HTML-escaped (see wikiApi.inlineHtml).
+  const attr = `data-title="${escapeHtml(linkTitle)}"`
+  const inRead = bodyHtml.value.includes(attr)
+  const inInfo = article.value?.info.some((row) => row.html.includes(attr))
+  const target: Tab | null = inRead ? 'read' : inInfo && hasInfo.value ? 'info' : null
+  if (!target) {
+    showSnackbar('That link isn’t in the article text')
+    return
+  }
+  selectedTab.value = target
+  await nextTick()
+  await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
+  const panel = document.querySelector(target === 'read' ? '.vfa-read' : '.vfa-info')
+  const link = panel?.querySelector<HTMLElement>(selector)
+  if (!link) return
+  // Centre it, so it sits clear of the header above and the toolbar below.
+  link.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  link.classList.remove('vfa-link--found')
+  void link.offsetWidth // restart the highlight if it's shown again
+  link.classList.add('vfa-link--found')
+  link.addEventListener('animationend', () => link.classList.remove('vfa-link--found'), {
+    once: true,
+  })
+}
+
 // — Images —
 
 const images = ref<ArticleImage[]>([])
 const imagesState = ref<'idle' | 'loading' | 'error'>('idle')
-const viewer = ref<ArticleImage | null>(null)
+
+/** Open an image full-screen in the post viewer, among the article's other images. */
+function openImage(image: ArticleImage): void {
+  router.push({ path: `${BASE}/images`, query: { title: title.value, file: image.file } })
+}
 
 async function loadImages(): Promise<void> {
   imagesState.value = 'loading'
@@ -233,16 +333,6 @@ watch(
   { immediate: true },
 )
 
-// — Editing the introduction (local only) —
-
-const editOpen = ref(false)
-const editText = ref('')
-
-function startEdit(): void {
-  editText.value = article.value?.introText ?? ''
-  editOpen.value = true
-}
-
 function escapeHtml(text: string): string {
   return text.replace(
     /[&<>"]/g,
@@ -250,26 +340,14 @@ function escapeHtml(text: string): string {
   )
 }
 
-function publishEdit(): void {
-  const firstHeading = bodyHtml.value.indexOf('<h3>')
-  const rest = firstHeading === -1 ? '' : bodyHtml.value.slice(firstHeading)
-  bodyHtml.value =
-    editText.value
-      .split(/\n{2,}/)
-      .map((t) => t.trim())
-      .filter(Boolean)
-      .map((t) => `<p>${escapeHtml(t)}</p>`)
-      .join('') + rest
-  if (article.value) article.value = { ...article.value, introText: editText.value }
-  editOpen.value = false
-  showSnackbar('Edit published (sample only, not saved to Wikipedia)')
-}
-
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 </script>
 
 <template>
-  <AndroidShell :create-article="headerTitle">
+  <AndroidShell
+    :create-article="headerTitle"
+    overlay-header
+  >
     <template #header>
       <header class="vfa-appbar">
         <md-icon-button
@@ -290,28 +368,25 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
             :icon="isArticleSaved(headerTitle) ? cdxIconBookmark : cdxIconBookmarkOutline"
           />
         </md-icon-button>
-        <md-icon-button
-          aria-label="Edit article"
-          :disabled="articleState !== 'ready'"
-          @click="startEdit"
-        >
-          <CodexSvg :icon="cdxIconEdit" />
-        </md-icon-button>
       </header>
     </template>
 
     <template #toolbar>
       <M3FloatingToolbar
         v-model="selectedTab"
-        :items="TABS"
+        :items="visibleTabs"
         label="Article views"
       />
     </template>
 
     <div
       class="vfa-article"
-      :class="`vfa-article--${tab}`"
+      :class="[`vfa-article--${tab}`, `vfa-article--from-${swipeDirection}`]"
       @click="onTextClick"
+      @click.capture="onSwipeClick"
+      @pointerdown="onSwipeStart"
+      @pointerup="onSwipeEnd"
+      @pointercancel="onSwipeCancel"
     >
       <md-linear-progress
         v-if="
@@ -428,7 +503,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
             type="button"
             class="vfa-tile"
             :aria-label="img.caption || img.file.replace(/^File:/, '')"
-            @click="viewer = img"
+            @click="openImage(img)"
           >
             <md-ripple />
             <md-focus-ring />
@@ -534,6 +609,14 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
               <CodexSvg :icon="cdxIconImage" />
             </span>
             <span slot="headline">{{ link.label }}</span>
+            <md-icon-button
+              slot="end"
+              :aria-label="`Show “${link.label}” in the article`"
+              :title="'Show in article'"
+              @click.stop="showInArticle(link.title)"
+            >
+              <CodexSvg :icon="cdxIconArticleSearch" />
+            </md-icon-button>
           </md-list-item>
         </md-list>
       </section>
@@ -545,79 +628,6 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
         Couldn’t load this article.
       </p>
     </div>
-
-    <!-- Edit the introduction -->
-    <md-dialog
-      :open="editOpen"
-      class="vfa-edit"
-      @closed="editOpen = false"
-    >
-      <div slot="headline">
-        Edit introduction
-      </div>
-      <div
-        slot="content"
-        class="vfa-edit__content"
-      >
-        <md-outlined-text-field
-          type="textarea"
-          rows="10"
-          label="Introduction"
-          :value="editText"
-          @input="editText = ($event.target as HTMLTextAreaElement).value"
-        />
-        <p class="md-typescale-body-small vfa-muted">
-          Posts connected to this article stay linked to it after your edit.
-        </p>
-      </div>
-      <div slot="actions">
-        <md-text-button @click="editOpen = false">
-          Cancel
-        </md-text-button>
-        <md-text-button
-          :disabled="editText === (article?.introText ?? '')"
-          @click="publishEdit"
-        >
-          Publish
-        </md-text-button>
-      </div>
-    </md-dialog>
-
-    <!-- Image viewer -->
-    <md-dialog
-      :open="viewer !== null"
-      @closed="viewer = null"
-    >
-      <div slot="headline">
-        {{ viewer?.file.replace(/^File:/, '') }}
-      </div>
-      <div slot="content">
-        <img
-          v-if="viewer"
-          class="vfa-viewer"
-          :src="viewer.thumb"
-          :alt="viewer.caption ?? ''"
-        >
-        <p
-          v-if="viewer?.caption"
-          class="md-typescale-body-medium"
-        >
-          {{ viewer.caption }}
-        </p>
-      </div>
-      <div slot="actions">
-        <md-text-button
-          v-if="viewer?.file.startsWith('File:')"
-          :href="`https://commons.wikimedia.org/wiki/${encodeURIComponent(viewer.file.replace(/ /g, '_'))}`"
-          target="_blank"
-        >
-          View on Commons
-        </md-text-button>
-        <md-text-button @click="viewer = null">
-          Close
-        </md-text-button>
-      </div>
-    </md-dialog>
   </AndroidShell>
 </template>
 
@@ -627,8 +637,9 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 64px;
-  padding: 0 4px;
+  box-sizing: border-box;
+  height: var(--vfa-top-bar);
+  padding: var(--vfa-top-inset) var(--vfa-icon-edge) 0;
 }
 
 .vfa-appbar__title {
@@ -643,22 +654,55 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 .vfa-article {
   position: relative;
   min-height: 100%;
+  /* Content starts below the overlay header and scrolls up behind it. */
+  padding-top: var(--vfa-top-bar);
   /* Room for the floating toolbar over the last row. */
-  padding-bottom: 96px;
+  padding-bottom: 80px;
   box-sizing: border-box;
+  /* Vertical scrolling stays native; horizontal drags switch tabs. */
+  touch-action: pan-y;
+}
+
+/* Each view slides in from the side it was swiped (or tapped) toward. */
+.vfa-article > section {
+  animation: vfa-tab-in 220ms var(--vfa-ease-emphasized-decelerate);
+}
+
+.vfa-article--from-previous > section {
+  animation-name: vfa-tab-in-previous;
+}
+
+@keyframes vfa-tab-in {
+  from {
+    opacity: 0;
+    transform: translateX(32px);
+  }
+}
+
+@keyframes vfa-tab-in-previous {
+  from {
+    opacity: 0;
+    transform: translateX(-32px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vfa-article > section {
+    animation: none;
+  }
 }
 
 .vfa-article__loading {
   position: absolute;
-  inset: 0 0 auto;
+  inset: var(--vfa-top-bar) 0 auto;
 }
 
 .vfa-pad {
-  padding: 16px;
+  padding: 16px var(--vfa-gutter);
 }
 
 .vfa-pad-x {
-  padding-inline: 16px;
+  padding-inline: var(--vfa-gutter);
 }
 
 .vfa-count {
@@ -796,7 +840,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 8px 8px 16px;
+  padding: 8px var(--vfa-icon-edge) 8px var(--vfa-gutter);
 }
 
 .vfa-places__header .vfa-count {
@@ -832,23 +876,5 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 .vfa-links__missing {
   --md-list-item-label-text-color: var(--md-sys-color-error);
-}
-
-/* Dialogs */
-
-.vfa-edit__content {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.vfa-edit__content md-outlined-text-field {
-  width: 100%;
-}
-
-.vfa-viewer {
-  display: block;
-  width: 100%;
-  border-radius: var(--vfa-shape-medium);
 }
 </style>

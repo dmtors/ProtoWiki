@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * M3 (Expressive) floating toolbar used as a tab switcher: a full-round,
- * elevated surface-container pill with 48dp icon buttons; the selected one is
- * filled brand blue. Material Web has no toolbar, so this follows the M3 spec on
+ * elevated surface-container pill with M3 Expressive extra-small (32dp) icon
+ * buttons, compact enough for seven views; the selected one is filled brand blue. Material Web has no toolbar, so this follows the M3 spec on
  * Codex tokens. Behaves as a tablist (arrow keys move between views).
  */
 import { ref } from 'vue'
@@ -62,11 +62,11 @@ function onKey(e: KeyboardEvent, index: number): void {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 2px;
-  height: 64px;
+  gap: 4px;
+  height: 48px;
   box-sizing: border-box;
   padding: 0 8px;
-  border-radius: 32px;
+  border-radius: 24px;
   background-color: var(--md-sys-color-surface-container);
   color: var(--md-sys-color-on-surface-variant);
   --md-elevation-level: 3;
@@ -77,18 +77,19 @@ function onKey(e: KeyboardEvent, index: number): void {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  /* XS icon button: 32dp container around the 20dp icon. */
+  width: 32px;
+  height: 32px;
   padding: 0;
   border: 0;
-  border-radius: 24px;
+  border-radius: 16px;
   background: none;
   color: inherit;
   cursor: pointer;
   transition:
     background-color 200ms var(--vfa-ease-standard),
     color 200ms var(--vfa-ease-standard);
-  --md-focus-ring-shape: 24px;
+  --md-focus-ring-shape: 16px;
 }
 
 .vfa-toolbar__item:focus-visible {

@@ -287,6 +287,50 @@ export function fetchImages(title: string): Promise<ArticleImage[]> {
   })
 }
 
+export interface ImageDetails {
+  /** Screen-sized rendition (960px wide, or the original when smaller). */
+  full: string
+  author: string
+  description: string
+  timestamp?: string
+}
+
+/** Commons details for article images: a full-screen rendition, author, description, upload time. */
+export function fetchImageDetails(files: string[]): Promise<Record<string, ImageDetails>> {
+  return memo(`image-details:${files.join('|')}`, async () => {
+    const details: Record<string, ImageDetails> = {}
+    for (let i = 0; i < files.length; i += 50) {
+      const batch = files.slice(i, i + 50)
+      const data = await getJson<{
+        query?: {
+          normalized?: { from: string; to: string }[]
+          pages: { title: string; imageinfo?: (MediaInfo & { thumburl?: string })[] }[]
+        }
+      }>(
+        actionUrl(COMMONS, {
+          action: 'query',
+          titles: batch.join('|'),
+          prop: 'imageinfo',
+          iiprop: 'url|extmetadata|timestamp',
+          iiurlwidth: '960',
+          iiextmetadatafilter: 'ImageDescription|Artist',
+        }),
+        'video-first-app-commons',
+      )
+      const normalized = new Map((data.query?.normalized ?? []).map((n) => [n.from, n.to]))
+      batch.forEach((file) => {
+        const name = normalized.get(file) ?? file
+        const info = data.query?.pages.find((p) => p.title === name)?.imageinfo?.[0]
+        const full = info?.thumburl ?? info?.url
+        if (!info || !full) return
+        const { author, description } = credit(info)
+        details[file] = { full, author, description, timestamp: info.timestamp }
+      })
+    }
+    return details
+  })
+}
+
 /** Places mentioned in the article: its body links that resolve to pages with coordinates. */
 export function fetchPlaces(title: string): Promise<ArticlePlace[]> {
   return memo(`places:${title}`, async () => {

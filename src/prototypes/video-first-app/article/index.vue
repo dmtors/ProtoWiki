@@ -138,7 +138,8 @@ const headerTitle = computed(() => article.value?.title ?? title.value)
 
 const videoPosts = computed(() =>
   state.posts.filter(
-    (p) => !state.hidden[p.id] && p.articles.some((a) => sameTitle(a, title.value)),
+    (p) =>
+      !state.hidden[p.id] && !p.viewerOnly && p.articles.some((a) => sameTitle(a, title.value)),
   ),
 )
 const videosState = ref<'idle' | 'loading'>('idle')

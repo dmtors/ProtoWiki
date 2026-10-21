@@ -27,6 +27,8 @@ export interface Post {
   video?: string
   /** Where the media comes from, shown on the post. */
   credit?: string
+  /** An article image opened from its Images tab: viewer only, never queued in the feed. */
+  viewerOnly?: boolean
   /** Grid thumbnail (article Video tab, Saved). */
   thumb: string
   /** Seconds — drives the playback bar for stills. */

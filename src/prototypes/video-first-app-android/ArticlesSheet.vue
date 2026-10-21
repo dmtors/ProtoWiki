@@ -2,11 +2,7 @@
 /** The post's connected articles: open one, save one, or connect another. */
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import {
-  cdxIconAdd,
-  cdxIconBookmark,
-  cdxIconBookmarkOutline,
-} from '@wikimedia/codex-icons'
+import { cdxIconAdd, cdxIconBookmark, cdxIconBookmarkOutline } from '@wikimedia/codex-icons'
 
 import CodexSvg from './CodexSvg.vue'
 import M3BottomSheet from './M3BottomSheet.vue'
@@ -119,6 +115,6 @@ function add(t: string): void {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 8px 16px 0;
+  padding: 8px var(--vfa-gutter) 0;
 }
 </style>

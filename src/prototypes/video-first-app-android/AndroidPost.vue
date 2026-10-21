@@ -4,7 +4,7 @@
  * zoom), author + caption, an icon-button rail and an M3 linear progress bar.
  * With comments open the video letterboxes into the strip above them.
  */
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   cdxIconHeart,
   cdxIconHeartOutline,
@@ -15,8 +15,8 @@ import {
 } from '@wikimedia/codex-icons'
 
 import CodexSvg from './CodexSvg.vue'
-import { formatCount, type Post } from '../video-first-app/data'
-import { state, toggleLike } from '../video-first-app/store'
+import { formatClock, formatCount, type Post } from '../video-first-app/data'
+import { postReason, state, toggleLike } from '../video-first-app/store'
 
 const props = defineProps<{
   post: Post
@@ -24,8 +24,85 @@ const props = defineProps<{
   paused: boolean
   muted: boolean
   commentsOpen: boolean
+  /** This row's live vertical offset from the screen, in px (0 = on screen). */
+  shift?: number
+  /** Pager height in px. */
+  height?: number
+  /** Show the whole frame of wide videos (letterboxed) instead of filling the screen. */
+  fit?: boolean
+  /** Live scrub offset as a fraction of the screen width; null when not scrubbing. */
+  scrub?: number | null
+  /** A photo in the image viewer: held still, no playback bar. */
+  gallery?: boolean
+  /** The viewer's back button takes the top-left corner; the title moves over. */
+  back?: boolean
 }>()
-const emit = defineEmits<{ openComments: []; openMore: [] }>()
+const emit = defineEmits<{
+  openComments: []
+  openMore: []
+  openArticles: []
+  /** The media's natural width ÷ height, once known. */
+  aspect: [ratio: number]
+}>()
+
+// — Fill vs fit —
+//
+// The frame always renders "contain" (whole frame visible); "fill" is a
+// scale-up to exactly the cover size. Switching animates the scale, so the
+// zoom is smooth instead of a jump between object-fit modes.
+
+const mediaEl = ref<HTMLElement | null>(null)
+const mediaAspect = ref<number | null>(null)
+const boxAspect = ref(9 / 20)
+let mediaObserver: ResizeObserver | null = null
+
+function setAspect(width: number, height: number): void {
+  if (!width || !height) return
+  mediaAspect.value = width / height
+  emit('aspect', mediaAspect.value)
+}
+
+/** Wider than the screen, so filling crops the sides: the case the zoom toggle is for. */
+const isWide = computed(
+  () => mediaAspect.value !== null && mediaAspect.value > boxAspect.value * 1.15,
+)
+
+/** Scale that turns "contain" into "cover" for this frame in this box. */
+const coverScale = computed(() => {
+  if (mediaAspect.value === null) return 1
+  return Math.max(boxAspect.value / mediaAspect.value, mediaAspect.value / boxAspect.value)
+})
+
+const zoomStyle = computed(() => ({
+  transform: `scale(${props.commentsOpen || (props.fit && isWide.value) ? 1 : coverScale.value})`,
+}))
+
+onMounted(() => {
+  const el = mediaEl.value
+  if (!el) return
+  const measure = () => {
+    if (el.clientWidth && el.clientHeight) boxAspect.value = el.clientWidth / el.clientHeight
+  }
+  measure()
+  mediaObserver = new ResizeObserver(measure)
+  mediaObserver.observe(el)
+})
+
+/**
+ * The text layer doesn't travel with the video: it cancels the row's offset
+ * and fades with distance instead. Fully gone by half a screen away, so the
+ * outgoing text clears before the incoming text appears — tied to the swipe.
+ */
+const overlayStyle = computed(() => {
+  const shift = props.shift ?? 0
+  const height = props.height || 1
+  return {
+    transform: `translateY(${-shift}px)`,
+    opacity: Math.max(0, Math.min(1, 1 - (2 * Math.abs(shift)) / height)),
+  }
+})
+
+const reason = computed(() => postReason(props.post))
 
 const liked = computed(() => Boolean(state.liked[props.post.id]))
 const progress = ref(0)
@@ -93,43 +170,113 @@ watch(
 
 function onTimeUpdate(): void {
   const video = videoEl.value
-  if (video?.duration) progress.value = video.currentTime / video.duration
+  if (video?.duration && !scrubbing.value) progress.value = video.currentTime / video.duration
 }
+
+// — Scrubbing —
+//
+// A sideways drag (see the pager) seeks the video: the full screen width covers
+// the whole clip. Playback holds on the frame while scrubbing and resumes after.
+
+const scrubbing = computed(
+  () => props.scrub !== null && props.scrub !== undefined && Boolean(props.post.video),
+)
+const scrubTime = ref(0)
+let scrubFrom = 0
+
+watch(
+  () => props.scrub,
+  (offset, previous) => {
+    const video = videoEl.value
+    if (!video || !video.duration) return
+    const starting =
+      (previous === null || previous === undefined) && offset !== null && offset !== undefined
+    if (starting) {
+      scrubFrom = video.currentTime
+      video.pause()
+    }
+    if (offset === null || offset === undefined) {
+      if (playing.value) video.play().catch(() => {})
+      return
+    }
+    const target = Math.min(video.duration - 0.05, Math.max(0, scrubFrom + offset * video.duration))
+    scrubTime.value = target
+    progress.value = target / video.duration
+    // fastSeek (Safari, Firefox) jumps to the nearest keyframe for snappier scrubbing.
+    const seeker = video as unknown as { fastSeek?: (time: number) => void }
+    if (typeof seeker.fastSeek === 'function') seeker.fastSeek(target)
+    else video.currentTime = target
+  },
+)
+
+const scrubLabel = computed(() => {
+  const duration = videoEl.value?.duration || props.post.duration
+  return `${formatClock(scrubTime.value)} / ${formatClock(duration)}`
+})
 
 function onVideoReady(): void {
   if (playing.value) videoEl.value?.play().catch(() => {})
 }
 
-onBeforeUnmount(() => cancelAnimationFrame(raf))
+onBeforeUnmount(() => {
+  cancelAnimationFrame(raf)
+  mediaObserver?.disconnect()
+})
 </script>
 
 <template>
   <article
     class="vfa-post"
-    :class="{ 'vfa-post--playing': playing, 'vfa-post--comments': props.commentsOpen }"
-    :aria-label="`Video by ${props.post.author}`"
+    :class="{
+      'vfa-post--playing': playing,
+      'vfa-post--comments': props.commentsOpen,
+      'vfa-post--gallery': props.gallery,
+      'vfa-post--back': props.back,
+    }"
+    :aria-label="`${props.gallery ? 'Image' : 'Video'} by ${props.post.author}`"
   >
-    <div class="vfa-post__media">
-      <video
-        v-if="props.post.video"
-        ref="videoEl"
-        class="vfa-post__frame"
-        :src="props.post.video"
-        :poster="props.post.media"
-        :muted="props.muted"
-        loop
-        playsinline
-        preload="metadata"
-        @timeupdate="onTimeUpdate"
-        @loadeddata="onVideoReady"
-      />
-      <img
-        v-else
-        class="vfa-post__frame vfa-post__frame--still"
-        :src="props.post.media"
-        :alt="props.post.caption"
-        draggable="false"
+    <div
+      ref="mediaEl"
+      class="vfa-post__media"
+    >
+      <div
+        class="vfa-post__zoom"
+        :class="{ 'vfa-post__zoom--measured': mediaAspect !== null }"
+        :style="zoomStyle"
       >
+        <video
+          v-if="props.post.video"
+          ref="videoEl"
+          class="vfa-post__frame"
+          :src="props.post.video"
+          :poster="props.post.media"
+          :muted="props.muted"
+          loop
+          playsinline
+          preload="metadata"
+          @timeupdate="onTimeUpdate"
+          @loadeddata="onVideoReady"
+          @loadedmetadata="
+            setAspect(
+              ($event.target as HTMLVideoElement).videoWidth,
+              ($event.target as HTMLVideoElement).videoHeight,
+            )
+          "
+        />
+        <img
+          v-else
+          class="vfa-post__frame vfa-post__frame--still"
+          :src="props.post.media"
+          :alt="props.post.caption"
+          draggable="false"
+          @load="
+            setAspect(
+              ($event.target as HTMLImageElement).naturalWidth,
+              ($event.target as HTMLImageElement).naturalHeight,
+            )
+          "
+        >
+      </div>
     </div>
 
     <div
@@ -148,8 +295,33 @@ onBeforeUnmount(() => cancelAnimationFrame(raf))
       </span>
     </div>
 
-    <template v-if="!props.commentsOpen">
+    <div
+      v-if="!props.commentsOpen"
+      class="vfa-post__overlay"
+      :style="overlayStyle"
+    >
+      <div class="vfa-post__scrim vfa-post__scrim--top" />
       <div class="vfa-post__scrim" />
+
+      <button
+        type="button"
+        class="vfa-post__topic"
+        :aria-label="`${props.post.articles.length} connected articles`"
+        @click="emit('openArticles')"
+      >
+        <md-ripple />
+        <md-focus-ring inward />
+        <span class="vfa-post__title">
+          <span class="md-typescale-title-large vfa-serif">{{ props.post.articles[0] }}</span>
+          <span
+            v-if="props.post.articles.length > 1"
+            class="vfa-post__more md-typescale-label-medium"
+          >
+            +{{ props.post.articles.length - 1 }}
+          </span>
+        </span>
+        <span class="md-typescale-body-small">{{ reason }}</span>
+      </button>
 
       <div class="vfa-post__info">
         <p class="vfa-post__byline">
@@ -182,8 +354,11 @@ onBeforeUnmount(() => cancelAnimationFrame(raf))
           >
             <CodexSvg :icon="liked ? cdxIconHeart : cdxIconHeartOutline" />
           </md-icon-button>
-          <span class="md-typescale-label-medium">{{
-            props.post.likes ? formatCount(props.post.likes) : 'Like'
+          <span
+            v-if="props.post.likes"
+            class="vfa-post__count md-typescale-label-medium"
+          >{{
+            formatCount(props.post.likes)
           }}</span>
         </div>
         <div class="vfa-post__action">
@@ -193,9 +368,10 @@ onBeforeUnmount(() => cancelAnimationFrame(raf))
           >
             <CodexSvg :icon="cdxIconSpeechBubbles" />
           </md-icon-button>
-          <span class="md-typescale-label-medium">{{
-            props.post.comments.length ? formatCount(props.post.comments.length) : 'Comment'
-          }}</span>
+          <span
+            v-if="props.post.comments.length"
+            class="vfa-post__count md-typescale-label-medium"
+          >{{ formatCount(props.post.comments.length) }}</span>
         </div>
         <md-icon-button
           aria-label="More options"
@@ -205,12 +381,22 @@ onBeforeUnmount(() => cancelAnimationFrame(raf))
         </md-icon-button>
       </div>
 
+      <div
+        v-if="scrubbing"
+        class="vfa-post__scrub md-typescale-title-medium"
+        aria-live="polite"
+      >
+        {{ scrubLabel }}
+      </div>
+
       <md-linear-progress
+        v-if="!props.gallery"
         class="vfa-post__progress"
+        :class="{ 'vfa-post__progress--scrubbing': scrubbing }"
         :value="progress"
         aria-label="Playback progress"
       />
-    </template>
+    </div>
   </article>
 </template>
 
@@ -219,7 +405,8 @@ onBeforeUnmount(() => cancelAnimationFrame(raf))
   position: relative;
   width: 100%;
   height: 100%;
-  overflow: hidden;
+  /* No clipping here: the text layer reaches beyond the moving frame while it
+     crossfades. The media layer clips itself; the pager clips the screen. */
   background-color: var(--md-sys-color-surface);
   color: var(--vfa-on-media);
   user-select: none;
@@ -231,11 +418,22 @@ onBeforeUnmount(() => cancelAnimationFrame(raf))
   overflow: hidden;
 }
 
+.vfa-post__zoom {
+  width: 100%;
+  height: 100%;
+  transition: transform 350ms var(--vfa-ease-emphasized-decelerate);
+}
+
 .vfa-post__frame {
   display: block;
   width: 100%;
   height: 100%;
+  /* Until the media's shape is known, fill; afterwards contain + scale (see script). */
   object-fit: cover;
+}
+
+.vfa-post__zoom--measured .vfa-post__frame {
+  object-fit: contain;
 }
 
 .vfa-post__frame--still {
@@ -251,6 +449,10 @@ onBeforeUnmount(() => cancelAnimationFrame(raf))
   to {
     transform: scale(1.18);
   }
+}
+
+.vfa-post--gallery .vfa-post__frame--still {
+  animation: none;
 }
 
 .vfa-post--comments .vfa-post__frame {
@@ -286,6 +488,18 @@ onBeforeUnmount(() => cancelAnimationFrame(raf))
   }
 }
 
+.vfa-post__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  /* No transition: the pager animates every frame and this follows it exactly. */
+}
+
+.vfa-post__overlay :is(button, md-icon-button, md-linear-progress, .vfa-post__caption) {
+  pointer-events: auto;
+}
+
 .vfa-post__scrim {
   position: absolute;
   inset: 50% 0 0 0;
@@ -293,11 +507,59 @@ onBeforeUnmount(() => cancelAnimationFrame(raf))
   pointer-events: none;
 }
 
+.vfa-post__scrim--top {
+  inset: 0 0 auto 0;
+  height: 120px;
+  background: linear-gradient(to bottom, var(--md-sys-color-scrim), transparent);
+}
+
+/* Title + reason; the mute button (owned by the feed) sits at the top-right. */
+.vfa-post__topic {
+  position: absolute;
+  /* Title line centred on the shared first-row line (inset + half the bar). */
+  top: calc(var(--vfa-top-inset) + var(--vfa-bar-height) / 2 - 20px);
+  right: 56px;
+  left: calc(var(--vfa-gutter) - 8px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: fit-content;
+  max-width: calc(100% - 64px);
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--vfa-shape-medium);
+  background: none;
+  color: var(--vfa-on-media);
+  text-align: start;
+  cursor: pointer;
+  --md-focus-ring-shape: 12px;
+}
+
+/* With a back button in the top-left corner, the title follows it. */
+.vfa-post--back .vfa-post__topic {
+  left: calc(var(--vfa-icon-edge) + 40px);
+  max-width: calc(100% - var(--vfa-icon-edge) - 40px - 56px);
+}
+
+.vfa-post__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vfa-post__more {
+  padding: 2px 8px;
+  border-radius: var(--vfa-shape-small);
+  background-color: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
 .vfa-post__info {
   position: absolute;
-  right: 80px;
-  bottom: 20px;
-  left: 16px;
+  /* Clear of the rail (centred 10% in, 40px wide) plus a 16px gap. */
+  right: calc(10% + 36px);
+  bottom: var(--vfa-gutter);
+  left: var(--vfa-gutter);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -339,14 +601,21 @@ onBeforeUnmount(() => cancelAnimationFrame(raf))
   text-overflow: ellipsis;
 }
 
+/*
+ * Icon-button column (40px) centred on the nav bar's last item ("You"): five
+ * equal items put its centre 10% of the width from the right edge. The mute
+ * icon above uses the same line. The last button's icon ends on the gutter at
+ * the bottom, level with the caption.
+ */
 .vfa-post__rail {
   position: absolute;
-  right: 12px;
-  bottom: 16px;
+  right: calc(10% - 20px);
+  bottom: calc(var(--vfa-gutter) - 8px);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
+  width: 40px;
   --md-icon-button-icon-color: var(--vfa-on-media);
   --md-icon-button-hover-icon-color: var(--vfa-on-media);
   --md-icon-button-focus-icon-color: var(--vfa-on-media);
@@ -359,6 +628,12 @@ onBeforeUnmount(() => cancelAnimationFrame(raf))
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+
+/* Counts only appear once there are likes / comments. */
+.vfa-post__count {
+  margin-top: -4px;
+  white-space: nowrap;
 }
 
 .vfa-post__liked {
@@ -378,5 +653,26 @@ onBeforeUnmount(() => cancelAnimationFrame(raf))
   --md-linear-progress-track-shape: 0;
   --md-linear-progress-active-indicator-color: var(--vfa-brand-blue);
   --md-linear-progress-track-color: transparent;
+}
+
+/* While scrubbing: a thicker bar with a visible track, so the position reads clearly. */
+.vfa-post__progress--scrubbing {
+  --md-linear-progress-track-height: 6px;
+  --md-linear-progress-active-indicator-height: 6px;
+  --md-linear-progress-track-color: color-mix(in srgb, var(--vfa-on-media) 30%, transparent);
+}
+
+/* Time readout while scrubbing, centred above the bar. */
+.vfa-post__scrub {
+  position: absolute;
+  bottom: 120px;
+  left: 50%;
+  padding: 6px 14px;
+  border-radius: 16px;
+  background-color: var(--md-sys-color-scrim);
+  color: var(--vfa-on-media);
+  font-variant-numeric: tabular-nums;
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 </style>

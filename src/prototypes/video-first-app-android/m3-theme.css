@@ -97,6 +97,20 @@
 
 /* M3 shape scale (dp) and motion, for hand-built surfaces. */
 .vfa {
+  /* Screen-edge gutter for every screen (content, lists, sheets). */
+  --vfa-gutter: 24px;
+  /*
+   * Every screen's first row (top bar, search bar, the feed's title + mute)
+   * is centred 40px from the top: an 8px inset above a 64px row. Content
+   * below a bar starts at --vfa-top-bar.
+   */
+  --vfa-top-inset: 8px;
+  --vfa-bar-height: 64px;
+  --vfa-top-bar: calc(var(--vfa-top-inset) + var(--vfa-bar-height));
+  /* Icons render at Codex's native 20px. */
+  --vfa-icon-size: 20px;
+  /* Edge padding beside a 40dp icon button so its icon lands on the gutter. */
+  --vfa-icon-edge: calc(var(--vfa-gutter) - (40px - var(--vfa-icon-size)) / 2);
   --vfa-shape-small: 8px;
   --vfa-shape-medium: 12px;
   --vfa-shape-large: 16px;
@@ -106,12 +120,32 @@
   --vfa-ease-standard: cubic-bezier(0.2, 0, 0, 1);
 }
 
-/* Codex icons inside Material Web controls render at M3's 24dp. */
-.vfa md-icon,
-.vfa md-icon-button,
-.vfa md-filled-tonal-icon-button,
-.vfa md-fab {
-  --md-icon-size: 24px;
+/* Material lists use the same gutter as everything else. */
+.vfa md-list-item {
+  --md-list-item-leading-space: var(--vfa-gutter);
+  --md-list-item-trailing-space: var(--vfa-gutter);
+}
+
+/* A trailing icon button keeps its icon on the gutter line. */
+.vfa md-list-item:has(> md-icon-button[slot='end']) {
+  --md-list-item-trailing-space: var(--vfa-icon-edge);
+}
+
+/*
+ * Codex icons inside Material Web controls render at the shared icon size.
+ * Each Material button sizes its slotted icon with its own variable (24px by
+ * default), so every one has to be pointed at --vfa-icon-size.
+ */
+.vfa {
+  --md-icon-size: var(--vfa-icon-size);
+  --md-icon-button-icon-size: var(--vfa-icon-size);
+  --md-filled-icon-button-icon-size: var(--vfa-icon-size);
+  --md-filled-tonal-icon-button-icon-size: var(--vfa-icon-size);
+  --md-outlined-icon-button-icon-size: var(--vfa-icon-size);
+  --md-fab-icon-size: var(--vfa-icon-size);
+  --md-fab-small-icon-size: var(--vfa-icon-size);
+  --md-assist-chip-icon-size: var(--vfa-icon-size);
+  --md-filter-chip-icon-size: var(--vfa-icon-size);
 }
 
 /* Phone column is the containing block for sheets, dialogs and the snackbar. */
@@ -119,6 +153,40 @@
   position: relative;
   overflow: hidden;
   transform: translateZ(0);
+}
+
+/*
+ * Desktop preview: a phone-sized device (400×888, the 20:9 shape of a Pixel,
+ * a little roomier for prototyping) centred in the window with modern rounded
+ * corners. It shrinks to fit short windows and keeps its proportions. On an actual phone (< 480px wide) the app stays full-screen.
+ */
+@media (min-width: 480px) {
+  .vfa.mobile-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding-block: 24px;
+    box-sizing: border-box;
+  }
+
+  .vfa.mobile-wrapper .mobile-wrapper__column {
+    width: min(400px, calc((100vh - 48px) * 9 / 20));
+    max-width: none;
+    height: min(888px, calc(100vh - 48px));
+    aspect-ratio: 9 / 20;
+    min-height: 0;
+    margin: 0;
+    border: var(--border-width-base) solid var(--border-color-muted);
+    border-radius: 44px;
+    box-shadow: var(--box-shadow-large);
+  }
+
+  /* The app chrome sizes itself to the viewport by default; fill the device instead. */
+  .vfa.mobile-wrapper .mobile-wrapper__column .app-chrome-wrapper {
+    height: 100%;
+    max-height: 100%;
+  }
 }
 
 /* Screens lay out edge to edge (the app chrome's 24px gutter is not M3). */
@@ -134,4 +202,23 @@
 
 .vfa a.vf-link--missing {
   color: var(--md-sys-color-error);
+}
+
+/* A link shown in context from the Links tab: a brand-blue wash that fades out. */
+.vfa a.vfa-link--found {
+  border-radius: 4px;
+  animation: vfa-link-found 2.4s var(--vfa-ease-standard);
+}
+
+@keyframes vfa-link-found {
+  0%,
+  35% {
+    background-color: color-mix(in srgb, var(--vfa-brand-blue) 22%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--vfa-brand-blue) 22%, transparent);
+  }
+
+  100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 3px transparent;
+  }
 }
