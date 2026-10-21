@@ -1,1 +1,0 @@
-import{s as e}from"./AndroidShell-IQDXnUH1.js";import{C as r,i as d}from"./store-DtSD5Ouj.js";async function s(a){const o=await r(a);if(!d(a)){e(`Removed ${a} from saved`,{label:"Undo",run:()=>s(a)});return}e(o?`Saved. ${o} ${o===1?"video":"videos"} about ${a} coming up in your feed`:`Saved ${a}`)}export{s};
