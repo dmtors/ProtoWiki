@@ -8,6 +8,7 @@ import { CdxButton, CdxIcon } from '@wikimedia/codex'
 import { cdxIconClose, cdxIconLinkExternal, cdxIconLogoWikipedia } from '@wikimedia/codex-icons'
 
 import type { ArticleSummary } from '../la28-shared/useArticleSummaries'
+import ArticleSignals from './ArticleSignals.vue'
 
 const props = defineProps<{
   open: boolean
@@ -72,6 +73,10 @@ const webUrl = computed(
           >
             {{ description }}
           </p>
+          <ArticleSignals
+            class="wp-sheet__signals"
+            :summary="summary"
+          />
           <hr class="wp-sheet__rule">
           <p class="wp-sheet__extract">
             {{ summary?.extract || 'Loading…' }}
@@ -201,6 +206,10 @@ const webUrl = computed(
   line-height: 1.35;
 }
 
+.wp-sheet__signals {
+  margin-top: var(--spacing-75, 12px);
+}
+
 .wp-sheet__rule {
   width: 60px;
   margin: var(--spacing-100, 16px) 0;
@@ -226,6 +235,11 @@ const webUrl = computed(
 
 .wp-sheet__actions .cdx-button {
   max-width: none;
+  border-radius: 999px;
+}
+
+.wp-sheet__top .cdx-button {
+  border-radius: 50%;
 }
 
 .wp-sheet__web {

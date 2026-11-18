@@ -8,6 +8,7 @@ import { CdxButton, CdxIcon, CdxThumbnail } from '@wikimedia/codex'
 import { cdxIconLogoWikipedia } from '@wikimedia/codex-icons'
 
 import type { ArticleSummary } from '../la28-shared/useArticleSummaries'
+import ArticleSignals from './ArticleSignals.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -62,6 +63,7 @@ const description = computed(() => props.summary?.description || props.fallbackD
           :thumbnail="summary?.thumbnailUrl ? { url: summary.thumbnailUrl } : null"
         />
       </span>
+      <ArticleSignals :summary="summary" />
       <span
         v-if="variant === 'full' && summary?.extract"
         class="wp-embed__extract"

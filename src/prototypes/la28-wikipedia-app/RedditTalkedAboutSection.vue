@@ -397,6 +397,7 @@ function scrollTo(index: number): void {
 
 .la28-talked__more {
   width: 100%;
+  border-radius: 999px;
   justify-content: flex-start;
   margin-top: calc(-1 * var(--spacing-50, 8px));
 }
